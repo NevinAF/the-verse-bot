@@ -1,11 +1,17 @@
 import Debug from "@/debug";
 import { Authors, Fetching } from "@/messaging";
+import QuickReplies from "@/messaging/QuickReplies";
 import { BotModule } from "@/types";
 import { ButtonInteraction, PermissionsBitField } from "discord.js";
 import RecordingSession from "./RecordingSession";
 
 async function stopRecording(interaction: ButtonInteraction)
 {
+	if (interaction.message.embeds.length < 0 || !interaction.message.embeds[0].description)
+	{
+		return interaction.reply(QuickReplies.interactionError("The button that you have clicked is not on a message with the correct recording session information. This is likely an internal error, please report it to admins."));
+	}
+
 	const message_channel = interaction.message.embeds[0].description.match(/<#(\d+)>/);
 	if (!message_channel)
 	{

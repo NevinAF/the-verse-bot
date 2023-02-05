@@ -4,7 +4,7 @@ import { Authors, TimeParser } from "@/messaging";
 
 async function getTime(i: ChatInputCommandInteraction)
 {
-	let timezone: string | number | undefined = i.options.getString("timezone");
+	let timezone: string | number | null = i.options.getString("timezone");
 
 	if (timezone && !TimeParser.isValidTimezone(timezone))
 	{
@@ -22,9 +22,9 @@ async function getTime(i: ChatInputCommandInteraction)
 
 			if (UTC >= -840 && UTC <= 840)
 				timezone = UTC;
-			else timezone = undefined;
+			else timezone = null;
 		}
-		else timezone = undefined;
+		else timezone = null;
 	}
 	else timezone = "PST";
 

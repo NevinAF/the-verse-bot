@@ -1,5 +1,6 @@
 import Debug from "@/debug";
 import { Authors, Buttons, Fetching } from "@/messaging";
+import QuickReplies from "@/messaging/QuickReplies";
 import { APIMessageComponentEmoji, BaseMessageOptions, ButtonStyle, ChatInputCommandInteraction, ComponentType, Guild, InteractionCollector, Message } from "discord.js";
 import { RoleDescriptions, RoleEmojis, RoleIds } from "../../database/RolesModuleSheet";
 
@@ -20,13 +21,13 @@ export async function createRoleMessageEmbed(guild: Guild, title: string, desc: 
 	{
 		const role = guild_roles.find(r => r.name === role_resolvable || r.id === role_resolvable);
 
-		if (role === null)
+		if (!role)
 		{
 			Debug.warning(`Could not find '${role_resolvable}' as a role.`);
 			continue;
 		}
 
-		const role_id = role?.id;
+		const role_id = role.id;
 		const role_index = ids.indexOf(role_id);
 
 		if (role_index === -1)
@@ -88,10 +89,16 @@ export async function createRoleMessageEmbed(guild: Guild, title: string, desc: 
 export function updateRoleMessageEmbed(message: Message, add?: boolean, role?: string)
 {
 	return createRoleMessageEmbed(
-		message.guild,
+		// @ts-ignore
+		message?.guild,
 		message.embeds[0].title,
 		message.embeds[0].description,
-		message.embeds[0].fields.map(field => field.name.substring(field.name.indexOf(" ") + 1, field.name.lastIndexOf(" "))).concat((add ?? false) ? role : []).filter(r => r !== role || (add ?? true))
+		message.embeds[0].fields.map(field =>
+			field.name.substring(
+				field.name.indexOf(" ") + 1,
+				field.name.lastIndexOf(" ")))
+			.concat(((add ?? false) && role) ? role : [])
+			.filter(r => r !== role || (add ?? true))
 	).then(content => message.edit(content));
 }
 
@@ -99,6 +106,16 @@ export async function editRoleMessage(interaction: ChatInputCommandInteraction, 
 {
 	const role = interaction.options.getRole("role");
 	const message_resolvable = interaction.options.getString("message");
+
+	if (!role || !message_resolvable)
+	{
+		return await interaction.reply(QuickReplies.interactionError("Invalid role or message."));
+	}
+
+	if (!interaction.channel)
+	{
+		return await interaction.reply(QuickReplies.interactionError("Invalid channel."));
+	}
 
 	let message: Message;
 
@@ -129,7 +146,7 @@ export async function editRoleMessage(interaction: ChatInputCommandInteraction, 
 		}], ephemeral: true
 	});
 
-	if (message.embeds[0].author.name !== "Role Assign") return interaction.reply({
+	if (!message.embeds[0].author || message.embeds[0].author.name !== "Role Assign") return interaction.reply({
 		embeds: [{
 			author: Authors.Error,
 			description: "The message that you have specified is not a role assign message."

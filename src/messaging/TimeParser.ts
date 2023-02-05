@@ -2,7 +2,7 @@ import { CacheType, CommandInteraction, Message }from "discord.js";
 import Debug from "@/debug";
 import * as chrono from "chrono-node";
 
-const TIMEZONE_ABBR_MAP = {
+const TIMEZONE_ABBR_MAP: { [key: string]: number } = {
 	ACDT: 630,
 	ACST: 570,
 	ADT: -180,
@@ -197,7 +197,7 @@ const TIMEZONE_ABBR_MAP = {
 };
 
 function toTimezoneOffset(timezoneInput?: string | number): number | null {
-	if (timezoneInput === null || timezoneInput === undefined) {
+	if (!timezoneInput) {
 		return null;
 	}
 
@@ -476,7 +476,7 @@ namespace TimeParser
 		minute: "2-digit",
 	};
 
-	export function dateToLosAngles(date?: Date, short: boolean = false): string
+	export function dateToLosAngles(date?: Date, short: boolean = false): string | undefined
 	{
 		return date ? date.toLocaleString("en-US", short ? LosAngeles_options_short : LosAngeles_options_long) : undefined;
 	}

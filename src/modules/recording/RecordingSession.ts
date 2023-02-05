@@ -1,7 +1,7 @@
 import { AudioReceiveStream, createAudioPlayer, createAudioResource, joinVoiceChannel, NoSubscriberBehavior, VoiceConnection, VoiceConnectionStatus } from "@discordjs/voice";
 import prism from "prism-media";
 import fs from "fs";
-import { ButtonStyle, ChatInputCommandInteraction, ComponentType, Message, VoiceBasedChannel } from "discord.js";
+import { ButtonStyle, ChatInputCommandInteraction, ComponentType, Guild, Message, VoiceBasedChannel } from "discord.js";
 import { Authors, Buttons } from "@/messaging";
 import Debug from "@/debug";
 import { GoogleDrive } from "@/apis/Google";
@@ -53,7 +53,7 @@ interface ActivityEntry
 
 class RecordingSession
 {
-	public static async CreateSession(interaction: ChatInputCommandInteraction, channel: VoiceBasedChannel)
+	public static async CreateSession(interaction: ChatInputCommandInteraction & { guildId: string}, channel: VoiceBasedChannel)
 	{
 		if (RecordingSession.GuildHasSession(interaction.guildId))
 		{
@@ -66,6 +66,8 @@ class RecordingSession
 		}
 
 		const message = await interaction.reply({ content: "Starting recording session...", fetchReply: true });
+
+		// @ts-ignore - The message must have a guild as the message is sent in a guild channel.
 		new RecordingSession(interaction.user.id, message, channel, !(interaction.options.getBoolean("record-pauses", false) ?? false));
 	}
 
@@ -97,9 +99,9 @@ class RecordingSession
 
 	private fileStream: fs.WriteStream;
 
-	private maxTime: NodeJS.Timeout;
+	private maxTime?: NodeJS.Timeout;
 
-	private constructor(userId: string, message: Message, channel: VoiceBasedChannel, removePauses: boolean)
+	private constructor(userId: string, message: Message & { guild: Guild, guildId: string }, channel: VoiceBasedChannel, removePauses: boolean)
 	{
 		this.message = message;
 		this.creatorId = userId;
@@ -167,7 +169,7 @@ class RecordingSession
 
 			this.maxTime = setTimeout(() =>
 			{
-				this.maxTime = null;
+				this.maxTime = undefined;
 				this.stopRecording("Recording reached maximum time limit.");
 			}, WARNING_TIME);
 		}, MAX_RECORDING_TIME - WARNING_TIME);
@@ -175,10 +177,10 @@ class RecordingSession
 
 	public async stopRecording(reason: string)
 	{
-		if (this.maxTime !== null)
+		if (this.maxTime)
 		{
 			clearTimeout(this.maxTime);
-			this.maxTime = null;
+			this.maxTime = undefined;
 		}
 
 		await this.setUploadingMessage().catch(Debug.error);
@@ -350,6 +352,13 @@ class RecordingSession
 	private removeUser(user_id: string)
 	{
 		const userSession = this.users.get(user_id);
+
+		if (!userSession)
+		{
+			Debug.error("removeUser: userSession is undefined");
+			return;
+		}
+
 		userSession.audioStream.destroy();
 		userSession.opusDecoder.destroy();
 		this.users.delete(user_id);
@@ -404,7 +413,7 @@ class RecordingSession
 		});
 	}
 
-	private async setClosedMessage(link: string, attachFile: string)
+	private async setClosedMessage(link: string | null | undefined, attachFile: string)
 	{
 		let attach: boolean;
 
@@ -430,13 +439,13 @@ class RecordingSession
 					this.activity.slice(1).map((entry) => `<@${entry.userId}> ${entry.join ? "joined" : "left"} <t:${Math.floor(entry.time / 1000)}:T>`).join("\n") +
 					`\nEnded <t:${Math.floor(endTime / 1000)}:T>`
 			}],
-			components: Buttons.toNiceActionRows([{
+			components: link ? Buttons.toNiceActionRows([{
 				type: ComponentType.Button,
 				label: "View Recording",
 				style: ButtonStyle.Link,
 				url: link,
 				emoji: { name: "📥" }
-			}]),
+			}]) : [],
 			files: attach ? [attachFile] : []
 		});
 	}
@@ -455,18 +464,18 @@ class RecordingSession
 		const subscription = this.connection.subscribe(player);
 
 		setTimeout(() => {
-			subscription.unsubscribe();
+			subscription?.unsubscribe();
 			player.stop();
 
 			this.connection.setSpeaking(false);
 		}, 6000);
 	}
 
-	private wavTime: number = null;
-	private wavBuffer_one: Buffer = null; // 250 samples or 5s
-	private wavBuffer_two: Buffer = null; // 250 samples or 5s
+	private wavTime?: number;
+	private wavBuffer_one?: Buffer; // 250 samples or 5s
+	private wavBuffer_two?: Buffer; // 250 samples or 5s
 
-	private nextEmptyBufferIndex: number = null;
+	private nextEmptyBufferIndex?: number;
 
 	private writeAudio(number_entries: number = -1)
 	{
@@ -487,6 +496,13 @@ class RecordingSession
 		for (let i = 0; i < number_entries; i++)
 		{
 			const entry = this.recordingBuffer.shift();
+
+			if (!entry || !this.wavTime)
+			{
+				Debug.error("Recording buffer is empty, but we tried to write to it!");
+				return;
+			}
+
 			let entry_offset = Math.floor((entry.timestamp - this.wavTime) / 1000 * SampleRate * CHANNELS) * BYTES_PER_SAMPLE;
 
 			if (entry_offset < 0)
@@ -503,7 +519,7 @@ class RecordingSession
 
 			if (this.removePauses)
 			{
-				if (this.nextEmptyBufferIndex < entry_offset)
+				if (this.nextEmptyBufferIndex && this.nextEmptyBufferIndex < entry_offset)
 				{
 					entry_offset = this.nextEmptyBufferIndex;
 					this.wavTime = Math.floor(entry.timestamp - (entry_offset / SampleRate / CHANNELS / BYTES_PER_SAMPLE * 1000));
@@ -520,7 +536,7 @@ class RecordingSession
 				const entry_int = entry.data.readInt16LE(sample_offset);
 
 				let buffer_offset = entry_offset + sample_offset;
-				let targetBuffer: Buffer;
+				let targetBuffer: Buffer | undefined;
 				
 				if (buffer_offset < WRITE_BUFFER_SIZE)
 				{
@@ -545,10 +561,10 @@ class RecordingSession
 					buffer_offset -= WRITE_BUFFER_SIZE;
 				}
 
-				const buffer_int = targetBuffer.readInt16LE(buffer_offset);
+				const buffer_int = targetBuffer?.readInt16LE(buffer_offset) ?? 0;
 
 				const mixed_int = Math.min(Math.max(entry_int + buffer_int, -32768), 32767);
-				targetBuffer.writeInt16LE(mixed_int, buffer_offset);
+				targetBuffer?.writeInt16LE(mixed_int, buffer_offset);
 			}
 		}
 	}
@@ -563,14 +579,14 @@ class RecordingSession
 		if (this.wavBuffer_one === null || this.wavBuffer_two === null) return false;
 
 		
-		if (this.nextEmptyBufferIndex <= WRITE_BUFFER_SIZE)
+		if (this.nextEmptyBufferIndex && this.nextEmptyBufferIndex <= WRITE_BUFFER_SIZE)
 		{
-			this.fileStream.write(this.wavBuffer_one.subarray(0, this.nextEmptyBufferIndex));
+			this.fileStream.write(this.wavBuffer_one?.subarray(0, this.nextEmptyBufferIndex));
 		}
-		else if (this.nextEmptyBufferIndex <= WRITE_BUFFER_SIZE * 2)
+		else if (this.nextEmptyBufferIndex && this.nextEmptyBufferIndex <= WRITE_BUFFER_SIZE * 2)
 		{
 			this.fileStream.write(this.wavBuffer_one);
-			this.fileStream.write(this.wavBuffer_two.subarray(0, this.nextEmptyBufferIndex - WRITE_BUFFER_SIZE));
+			this.fileStream.write(this.wavBuffer_two?.subarray(0, this.nextEmptyBufferIndex - WRITE_BUFFER_SIZE));
 		}
 		else
 		{
@@ -580,9 +596,9 @@ class RecordingSession
 			this.fileStream.write(this.wavBuffer_two);
 		}
 
-		this.wavBuffer_one = null;
-		this.wavBuffer_two = null;
-		this.wavTime = null;
+		this.wavBuffer_one = undefined;
+		this.wavBuffer_two = undefined;
+		this.wavTime = undefined;
 
 		return true;
 	}

@@ -13,7 +13,7 @@ export default {
 onReady: [() =>
 {
 	Debug.assert(ClientWrapper.Client?.user?.tag != null, "Client/user/tag is null on ready!");
-	Debug.event(" Ready ", `Logged in as ${ClientWrapper.Client.user.tag}!`);
+	Debug.event(" Ready ", `Logged in as ${ClientWrapper.Client.user?.tag}!`);
 }],
 
 onMessageCreate: [(message) =>
@@ -27,7 +27,7 @@ onMessageCreate: [(message) =>
 
 onMessageDelete: [async (message) =>
 {
-	if (message.author.bot) return;
+	if (!message.author || message.author.bot) return;
 
 	return message.fetch()
 		.then(message => Debug.event("Del Msg", `Deleted message ${Previewing.previewMessage(message)}`))
@@ -36,7 +36,7 @@ onMessageDelete: [async (message) =>
 
 onMessageUpdate: [async (oldMessage, newMessage) =>
 {
-	if (oldMessage.author.bot || newMessage.author.bot) return;
+	if (!oldMessage.author || oldMessage.author.bot || !newMessage.author || newMessage.author.bot) return;
 
 	return oldMessage.fetch()
 		.then(oldMessage => newMessage.fetch()

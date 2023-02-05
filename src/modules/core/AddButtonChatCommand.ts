@@ -1,4 +1,3 @@
-import { Authors } from "@/messaging";
 import { BotModule } from "@/types";
 import { SlashCommandBuilder, CommandInteraction, CacheType, PermissionsBitField } from "discord.js";
 

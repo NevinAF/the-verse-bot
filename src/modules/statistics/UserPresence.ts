@@ -3,6 +3,7 @@ import { BotModule } from "@/types";
 import { PresenceStatus } from "discord.js";
 import { UserData, UserEntryData } from "@/database/UserDataModuleSheet";
 import { InternalMemberRole } from "@/database/RolesModuleSheet";
+import Debug from "@/debug";
 
 // BUG this only works if the user is only in one guild with the bot?
 
@@ -32,20 +33,26 @@ function incPresence(duration: number, status: PresenceStatus, guildId: string, 
  */
 export default {
 
-	registerPresenceUpdate: [async (oldPresence, newPresence) =>
+	registerPresenceUpdate: [async (oldPresence, newPresence, data) =>
 	{
-		if (oldPresence.presence === newPresence.presence || !oldPresence.presence?.status)
+		if (oldPresence === newPresence || !oldPresence?.status || !oldPresence.guild || !oldPresence.member)
 			return;
 		
-		const duration = newPresence.timestamp - oldPresence.timestamp;
+		const duration = data.newTimestamp - data.oldTimestamp;
 
-		return incPresence(duration, oldPresence.presence.status, oldPresence.presence.guild.id, oldPresence.presence.member.id);
+		return incPresence(duration, oldPresence.status, oldPresence.guild.id, oldPresence.member.id);
 	}],
 
 	onExiting: [async () =>
 	{
 		const crashTime = Date.now();
 		const readyTime = ClientWrapper.Client.readyTimestamp;
+
+		if (!readyTime)
+		{
+			Debug.error("Client was not ready when exiting.");
+			return;
+		}
 
 		for await (const guild of ClientWrapper.Client.guilds.cache.values())
 		{

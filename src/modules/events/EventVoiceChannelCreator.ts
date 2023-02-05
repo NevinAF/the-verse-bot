@@ -12,7 +12,7 @@ class EventChecker
 
 	private static readonly createBefore = 1000 * 60 * 15; // 15 minutes
 
-	private updateTimeOut: NodeJS.Timeout;
+	private updateTimeOut?: NodeJS.Timeout;
 	private readonly guild: Guild;
 
 	public eventChannels: Map<string, {
@@ -33,7 +33,7 @@ class EventChecker
 		{
 			// Clear the timeout
 			clearTimeout(this.updateTimeOut);
-			this.updateTimeOut = null;
+			this.updateTimeOut = undefined;
 		}
 
 		if (!this.guild.available)
@@ -46,7 +46,7 @@ class EventChecker
 			this.guild.scheduledEvents.fetch(),
 			EventsCategoryId.fetch(this.guild.id)
 				.then((id) => this.guild.channels.fetch(id))
-				.catch(() => null as GuildBasedChannel),
+				.catch(() => null),
 		]);
 
 		if (!createCategory || createCategory.type !== ChannelType.GuildCategory)
@@ -61,9 +61,11 @@ class EventChecker
 
 		for await (const event of events.values())
 		{
-			if (this.eventChannels.has(event.id))
+			const eventData = this.eventChannels.get(event.id);
+
+			if (eventData)
 			{
-				if (event.status === GuildScheduledEventStatus.Active || event.scheduledEndTimestamp > currentTime)
+				if (event.scheduledEndTimestamp && (event.status === GuildScheduledEventStatus.Active || event.scheduledEndTimestamp > currentTime))
 				{
 					if (event.scheduledEndTimestamp < nextUpdateTime)
 					{
@@ -74,10 +76,8 @@ class EventChecker
 
 				// Event is over
 				Debug.event("Evt End", `Event ${event.name} is over, deleting channel and updating sheet.`);
-				
-				const eventData = this.eventChannels.get(event.id);
-				const channel = await this.guild.channels.fetch(eventData.channelId, { force: true });
 
+				const channel = await this.guild.channels.fetch(eventData.channelId, { force: true });
 				this.eventChannels.delete(event.id);
 				
 				if (channel && channel.type === ChannelType.GuildVoice)
@@ -96,6 +96,11 @@ class EventChecker
 				continue;
 			}
 
+			if (!event.scheduledStartTimestamp)
+			{
+				continue;
+			}
+
 			const createTime = event.scheduledStartTimestamp - EventChecker.createBefore;
 			const loc = event.entityMetadata?.location?.trim();
 			if (!loc || !loc.toLowerCase().startsWith("vc:"))
@@ -111,7 +116,7 @@ class EventChecker
 				}
 
 				// Delete events that are not ongoing
-				let eventChannel: string = null;
+				let eventChannel: string | undefined;
 				for (const [, eventData] of this.eventChannels)
 				{
 					if (eventData.channelName === channelName)
@@ -123,7 +128,7 @@ class EventChecker
 
 				await Promise.all(createCategory.children.cache.map((channel) =>
 				{
-					if (channel.type === ChannelType.GuildVoice && channel.name === channelName && (eventChannel == null || channel.id !== eventChannel))
+					if (channel.type === ChannelType.GuildVoice && channel.name === channelName && (!eventChannel || channel.id !== eventChannel))
 					{
 						return channel.delete();
 					}
@@ -182,7 +187,7 @@ class EventChecker
 				}]
 			});
 
-			if (event.scheduledEndTimestamp < nextUpdateTime)
+			if (event.scheduledEndTimestamp && event.scheduledEndTimestamp < nextUpdateTime)
 			{
 				nextUpdateTime = event.scheduledEndTimestamp;
 			}
@@ -193,11 +198,17 @@ class EventChecker
 		this.updateTimeOut = setTimeout(() => this.update(), (nextUpdateTime - Date.now()) + 100);
 	}
 
-	public static tryAddUserToEvent(guild: Guild, channelId: string, userId: string)
+	public static tryAddUserToEvent(guild?: Guild, channelId?: string, userId?: string)
 	{
+		if (!guild || !channelId || !userId)
+		{
+			return;
+		}
+
 		return EventChecker.updateChecker(guild).then((checker) =>
 		{
-			for (const eventData of checker.eventChannels.values())
+			const currentEvents = checker?.eventChannels.values() ?? [];
+			for (const eventData of currentEvents)
 			{
 				if (eventData.channelId === channelId)
 				{
@@ -214,7 +225,8 @@ class EventChecker
 	{
 		return EventChecker.updateChecker(guild).then((checker) =>
 		{
-			for (const eventData of checker.eventChannels.values())
+			const currentEvents = checker?.eventChannels.values() ?? [];
+			for (const eventData of currentEvents)
 			{
 				if (eventData.channelId === channelId)
 				{
@@ -225,8 +237,13 @@ class EventChecker
 		});
 	}
 
-	public static updateChecker(guild: Guild): Promise<EventChecker>
+	public static updateChecker(guild: Guild | null): Promise<EventChecker | undefined>
 	{
+		if (!guild)
+		{
+			return Promise.resolve(undefined);
+		}
+
 		let checker = EventChecker.eventCheckers.get(guild.id);
 		if (!checker)
 		{
@@ -255,14 +272,14 @@ export default {
 
 	registerGuildScheduledEventCreate: [async (event) => EventChecker.updateChecker(event.guild)],
 	registerGuildScheduledEventDelete: [async (event) => EventChecker.updateChecker(event.guild)],
-	registerGuildScheduledEventUpdate: [async (event) => EventChecker.updateChecker(event.guild)],
+	registerGuildScheduledEventUpdate: [async (oldEvent, newEvent) => EventChecker.updateChecker(newEvent.guild)],
 
 	registerVoiceStateUpdate: [async (oldState, newState) =>
 	{
-		if (oldState.state.channelId === newState.state.channelId)
+		if (oldState.channelId === newState.channelId)
 			return;
 
-		EventChecker.tryAddUserToEvent(newState.state.guild, newState.state.channelId, newState.state.id);
+		EventChecker.tryAddUserToEvent(newState.guild, newState.channelId ?? undefined, newState.id);
 	}]
 
 

@@ -1,12 +1,24 @@
 import Debug from "@/debug";
+import { Authors } from "@/messaging";
 import { BotModule } from "@/types";
-import { SlashCommandBuilder, CommandInteraction, CacheType, APIEmbed, Message, TextChannel, PermissionsBitField } from "discord.js";
+import { SlashCommandBuilder, CommandInteraction, CacheType, APIEmbed, Message, TextChannel, PermissionsBitField, ChatInputCommandInteraction } from "discord.js";
 
-async function EditEmbed(interaction: CommandInteraction<CacheType>)
+async function EditEmbed(interaction: ChatInputCommandInteraction<CacheType>)
 {
-	const channel = interaction.options.get("channel").channel;
-	const msgid = interaction.options.get("msg-id").value as string;
-	const embed = interaction.options.get("embed").value as string;
+	const channel = interaction.options.getChannel("channel");
+	const msgid = interaction.options.getString("msg-id");
+	const embed = interaction.options.getString("embed");
+
+	if (!channel || !msgid || !embed)
+	{
+		await interaction.reply({
+			embeds: [{
+				author: Authors.Error,
+				description: "Invalid parameters"
+			}], ephemeral: true
+		});
+		return;
+	}
 
 	var embedObj: APIEmbed[] = [];
 	if (embed) try { embedObj.push(JSON.parse(embed) as APIEmbed); }
@@ -21,15 +33,24 @@ async function EditEmbed(interaction: CommandInteraction<CacheType>)
 	}
 
 	var message: Message<boolean>;
-	try { message = await (await interaction.guild.channels.fetch(channel.id) as TextChannel).messages.fetch(msgid); }
-	catch { interaction.reply({ content: "Failed to find message!", 
-		ephemeral: true});
+	try
+	{
+		message = await (await interaction.guild?.channels.fetch(channel.id) as TextChannel).messages.fetch(msgid);
+
+		if (!message)
+			throw new Error("Message not found");
+	}
+	catch {
+		await interaction.reply({
+			content: "Failed to find message!", 
+			ephemeral: true
+		});
 		return;
 	}
 
 	if (message.author.id != interaction.client.user.id)
 	{
-		interaction.reply({ content: "Cannot edit message that is not from this bot! (author of message is <@" + message.author.id + ">", ephemeral: true});
+		await interaction.reply({ content: "Cannot edit message that is not from this bot! (author of message is <@" + message.author.id + ">", ephemeral: true});
 		return;
 	}
 

@@ -7,6 +7,9 @@ namespace Fetching
 {
 	async function _interactionMember(cmd: CommandInteraction | ButtonInteraction, message: string): Promise<GuildMember | null>
 	{
+		if (!cmd.guild) return null;
+		if (!cmd.member) return null;
+
 		let member = cmd.guild.members.cache.get(cmd.member.user.id);
 
 		if (member != null)
@@ -34,6 +37,8 @@ namespace Fetching
 
 	export async function buttonMessage(button: ButtonInteraction): Promise<Message | null>
 	{
+		if (!button.channel) return null;
+
 		let msg = button.channel.messages.cache.get(button.message.id);
 
 		if (msg != null)
@@ -52,6 +57,9 @@ namespace Fetching
 	// This is an AND check, not an OR check
 	export async function interactionPermissions(interaction: BaseInteraction, permissions: PermissionResolvable): Promise<boolean>
 	{
+		if (!interaction.guild) return false;
+		if (!interaction.member) return false;
+
 		let has = (interaction.member.permissions as PermissionsBitField)?.has(permissions);
 		if (has != null) return has;
 
@@ -69,6 +77,9 @@ namespace Fetching
 	// This is an OR check, not an AND check
 	export async function interactionRoles(interaction: BaseInteraction, roles: string[]): Promise<boolean>
 	{
+		if (!interaction.guild) return false;
+		if (!interaction.member) return false;
+
 		let has = (interaction.member.roles as GuildMemberRoleManager)?.cache.some(role => roles.includes(role.id));
 		if (has) return has;
 
@@ -95,7 +106,7 @@ namespace Fetching
 
 			const msglink_split = msg_url.match(/[0-9]{10,20}/g);
 
-			var msg: Message<boolean>;
+			var msg: Message<boolean> | null;
 
 			try
 			{

@@ -17,17 +17,17 @@ export namespace GoogleSheets
 	}
 
 	export async function Read(params: sheets_v4.Params$Resource$Spreadsheets$Values$Get):
-		Promise<string[][]>
+		Promise<string[][] | null>
 	{
 		if (!params.auth) params.auth = GoogleClient.auth;
 		if (!params.spreadsheetId) params.spreadsheetId = process.env.BOT_DATABASE_GOOGLE_SHEET;
 		if (!params.range) params.range = "Sheet1";
 
-		return (await GoogleClient.SheetsClient.spreadsheets.values.get(params)).data.values;
+		return (await GoogleClient.SheetsClient.spreadsheets.values.get(params)).data.values ?? null;
 	}
 
 
-	export async function ReadCell(row: number, col: string, sheetname: string = "Sheet1", docID?: string): Promise<any | null>
+	export async function ReadCell(row: number, col: string, sheetname: string = "Sheet1", docID?: string): Promise<string | null>
 	{
 		if (!docID) docID = process.env.BOT_DATABASE_GOOGLE_SHEET;
 		const data = (await GoogleClient.SheetsClient.spreadsheets.values.get({
@@ -40,24 +40,24 @@ export namespace GoogleSheets
 		else return null;
 	}
 
-	export async function ReadCol(col: string, sheetname: string = "Sheet1", docID?: string): Promise<any[]>
+	export async function ReadCol(col: string, sheetname: string = "Sheet1", docID?: string): Promise<string[] | null>
 	{
 		if (!docID) docID = process.env.BOT_DATABASE_GOOGLE_SHEET;
 		return (await GoogleClient.SheetsClient.spreadsheets.values.get({
 			auth: GoogleClient.auth,
 			spreadsheetId: docID,
 			range: sheetname + `!${col}1:${col}5000`,
-		})).data.values.map(v => v[0]);
+		})).data.values?.map(v => v[0]) ?? null;
 	}
 
-	export async function ReadRow(row: number, sheetname: string = "Sheet1",  docID?: string): Promise<any[]>
+	export async function ReadRow(row: number, sheetname: string = "Sheet1",  docID?: string): Promise<string[] | null>
 	{
 		if (!docID) docID = process.env.BOT_DATABASE_GOOGLE_SHEET;
 		return (await GoogleClient.SheetsClient.spreadsheets.values.get({
 			auth: GoogleClient.auth,
 			spreadsheetId: docID,
 			range: sheetname + `!A${row}:ZZZ${row}`,
-		})).data.values[0];
+		})).data.values?.[0] ?? null;
 	}
 
 	export async function ReadAll(sheetname: string = "Sheet1",  docID?: string): Promise<sheets_v4.Schema$ValueRange>

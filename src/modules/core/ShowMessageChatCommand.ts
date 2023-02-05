@@ -1,10 +1,10 @@
 import { Authors, Fetching, Previewing } from "@/messaging";
 import { BotModule } from "@/types";
-import { SlashCommandBuilder, CommandInteraction, CacheType, PermissionsBitField } from "discord.js";
+import { SlashCommandBuilder, CacheType, PermissionsBitField, ChatInputCommandInteraction } from "discord.js";
 
-async function showMessage(interaction: CommandInteraction<CacheType>)
+async function showMessage(interaction: ChatInputCommandInteraction<CacheType>)
 {
-	const msg_link = interaction.options.get("message-link").value as string;
+	const msg_link = interaction.options.getString("message-link");
 
 	try {
 		var msg = await Fetching.MessageFromURL(msg_link);

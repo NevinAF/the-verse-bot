@@ -1,8 +1,8 @@
 import { GoogleSheets } from "@/apis";
 import ClientWrapper from "@/ClientWrapper";
 import Debug from "@/debug";
-import { ButtonInteraction, CacheType, ChatInputCommandInteraction, Client, CommandInteraction, ContextMenuCommandBuilder, Guild, GuildMember, GuildScheduledEvent, Interaction, Message, MessageContextMenuCommandInteraction, MessageReaction, ModalSubmitInteraction, SlashCommandBuilder, ThreadChannel, Typing, User, UserContextMenuCommandInteraction, VoiceState } from "discord.js";
-import { PresenceStamp, VoiceStateStamp } from "./discordExtended";
+import { ButtonInteraction, CacheType, ChatInputCommandInteraction, Client, Collection, CommandInteraction, ContextMenuCommandBuilder, Guild, GuildMember, GuildScheduledEvent, Interaction, Message, MessageContextMenuCommandInteraction, MessageReaction, ModalSubmitInteraction, PartialGuildMember, PartialMessage, PartialMessageReaction, PartialUser, Presence, SlashCommandBuilder, ThreadChannel, Typing, User, UserContextMenuCommandInteraction, VoiceState } from "discord.js";
+import { StateUpdateData } from "./discordExtended";
 import { Delegate } from "./functions";
 
 /** Discord command which describes the info and args of a command. Used for registering and pushing commands to the discord server.
@@ -12,37 +12,37 @@ export type ChatCommand = Omit<SlashCommandBuilder, "addSubcommand" | "addSubcom
 /** All discord commands and callbacks should be registered through the module interface. Intended as an export type of module files. */
 export interface BotModule
 {
-	onReady?: [callback: Delegate<[client?: Client]>];
-	onMessageCreate?: [callback: Delegate<[message?: Message]>];
-	onMessageUpdate?: [callback: Delegate<[oldMessage: Message, newMessage: Message]>];
-	onMessageDelete?: [callback: Delegate<[message?: Message]>];
-	onInteractionCreate?: [callback: Delegate<[interaction?: Interaction]>];
-	registerVoiceStateUpdate?: [callback: Delegate<[oldState: VoiceStateStamp, newState: VoiceStateStamp]>];
+	onReady?: [callback: Delegate<[client: Client]>];
+	onMessageCreate?: [callback: Delegate<[message: Message]>];
+	onMessageUpdate?: [callback: Delegate<[oldMessage: Message<boolean> | PartialMessage, newMessage: Message<boolean> | PartialMessage]>];
+	onMessageDelete?: [callback: Delegate<[message: Message<boolean> | PartialMessage]>];
+	onInteractionCreate?: [callback: Delegate<[interaction: Interaction]>];
+	registerVoiceStateUpdate?: [callback: Delegate<[oldState: VoiceState, newState: VoiceState, updateData: StateUpdateData]>];
 	registerChatCommand?: [command: ChatCommand, callback: Delegate<[interaction: ChatInputCommandInteraction<CacheType>]>];
 	registerUserContextMenu?: [menuCommand: ContextMenuCommandBuilder, callback: Delegate<[interaction: UserContextMenuCommandInteraction<CacheType>]>];
 	registerMessageContextMenu?: [menuCommand: ContextMenuCommandBuilder, callback: Delegate<[interaction: MessageContextMenuCommandInteraction<CacheType>]>];
 	registerButton?: [button_key: string | RegExp, callback: Delegate<[interaction: ButtonInteraction<CacheType>]>];
 	registerModalSubmit?: [modal_key: string, callback: Delegate<[interaction: ModalSubmitInteraction<CacheType>]>];
-	registerBackup?: [callback: Delegate<[crashed?: boolean]>];
+	registerBackup?: [callback: Delegate<[]>];
 	onExiting?: [callback: Delegate<[]>];
 	onCrash?: [callback: () => void];
 	registerGuildCreate?: [callback: Delegate<[guild: Guild]>];
-	registerPresenceUpdate?: [callback: Delegate<[PresenceStamp, PresenceStamp]>];
+	registerPresenceUpdate?: [callback: Delegate<[Presence | null, Presence, StateUpdateData]>];
 	registerThreadCreate ?: [callback: Delegate<[ThreadChannel]>];
 	registerThreadDelete?: [callback: Delegate<[ThreadChannel]>];
 	registerThreadUpdate?: [callback: Delegate<[ThreadChannel, ThreadChannel]>];
 	registerGuildScheduledEventCreate?: [callback: Delegate<[GuildScheduledEvent]>];
 	registerGuildScheduledEventDelete?: [callback: Delegate<[GuildScheduledEvent]>];
-	registerGuildScheduledEventUpdate?: [callback: Delegate<[GuildScheduledEvent, GuildScheduledEvent]>];
+	registerGuildScheduledEventUpdate?: [callback: Delegate<[GuildScheduledEvent | null, GuildScheduledEvent]>];
 	registerGuildScheduledEventUserAdd?: [callback: Delegate<[GuildScheduledEvent, User]>];
 	registerGuildScheduledEventUserRemove?: [callback: Delegate<[GuildScheduledEvent, User]>];
 	registerGuildMemberAdd?: [callback: Delegate<[GuildMember]>];
-	registerGuildMemberRemove?: [callback: Delegate<[GuildMember]>];
-	registerGuildMemberUpdate?: [callback: Delegate<[GuildMember, GuildMember]>];
-	registerMessageReactionAdd?: [callback: Delegate<[MessageReaction, User]>];
-	registerMessageReactionRemove?: [callback: Delegate<[MessageReaction, User]>];
-	registerMessageReactionRemoveAll?: [callback: Delegate<[MessageReaction]>];
-	registerMessageReactionRemoveEmoji?: [callback: Delegate<[MessageReaction]>];
+	registerGuildMemberRemove?: [callback: Delegate<[GuildMember | PartialGuildMember]>];
+	registerGuildMemberUpdate?: [callback: Delegate<[GuildMember | PartialGuildMember, GuildMember]>];
+	registerMessageReactionAdd?: [callback: Delegate<[MessageReaction | PartialMessageReaction, User | PartialUser]>];
+	registerMessageReactionRemove?: [callback: Delegate<[MessageReaction | PartialMessageReaction, User | PartialUser]>];
+	registerMessageReactionRemoveAll?: [callback: Delegate<[message: Message<boolean> | PartialMessage, reactions: Collection<string, MessageReaction>]>];
+	registerMessageReactionRemoveEmoji?: [callback: Delegate<[MessageReaction | PartialMessageReaction]>];
 	registerTypingStart?: [callback: Delegate<[Typing]>];
 
 }
@@ -115,11 +115,6 @@ export const SheetEntryTypes = {
 		get: sheetValuesToStringMatrix,
 		set: stringMatrixToSheetValues,
 		copy: copyMatrixValue,
-	},
-	ReadonlyNumber: {
-		get: sheetValuesToNumber,
-		set: null,
-		copy: null,
 	}
 } as const;
 
@@ -147,10 +142,10 @@ export class ModuleSheet
 		if (this.entries.length === 0)
 			return;
 
-		let rowStart = null;
-		let rowEnd = null;
-		let colStart = null;
-		let colEnd = null;
+		let rowStart: number | null = null;
+		let rowEnd: number | null = null;
+		let colStart: number | null = null;
+		let colEnd: number | null = null;
 
 		for (const entry of this.entries)
 		{
@@ -167,6 +162,14 @@ export class ModuleSheet
 				colEnd = entry.columnEnd;
 		}
 
+		if (rowStart === null || rowEnd === null || colStart === null || colEnd === null)
+		{
+			Debug.error(`ModuleSheet ${this.sheetName} has entries with invalid row/column ranges.`);
+			return;
+		}
+
+		const _colStart = colStart;
+
 		Debug.log("Fetching sheet id: " + guildId + " sheet: " + this.sheetName + " range: " + rowStart + ":" + colStart + " to " + rowEnd + ":" + colEnd);
 
 		const sheetValues = await GoogleSheets.Read({
@@ -178,12 +181,12 @@ export class ModuleSheet
 		{
 			for (const entry of this.entries)
 			{
-				const matrixSlice = sheetValues.slice(entry.rowStart - rowStart, entry.rowEnd - rowStart + 1).map(row => row.slice(entry.columnStart - colStart, entry.columnEnd - colStart + 1));
+				const matrixSlice = sheetValues.slice(entry.rowStart - rowStart, entry.rowEnd - rowStart + 1).map(row => row.slice(entry.columnStart - _colStart, entry.columnEnd - _colStart + 1));
 				entry._set_cache(guildId, matrixSlice);
 			}
 		}
 		else for (const entry of this.entries)
-			entry._set_cache(guildId, null);
+			entry._set_cache(guildId, [] as string[][]);
 	}
 
 	public async push(guildId: string): Promise<void>
@@ -210,9 +213,9 @@ export class ModuleSheet
 
 export class ModuleSheetEntry<Type extends keyof typeof SheetEntryTypes>
 {
-	public moduleSheet: ModuleSheet;
-	public readonly type: Type;
+	public moduleSheet?: ModuleSheet;
 
+	public readonly type: Type;
 	public readonly rowStart: number;
 	public readonly rowEnd: number;
 	public readonly columnStart: number;
@@ -235,30 +238,41 @@ export class ModuleSheetEntry<Type extends keyof typeof SheetEntryTypes>
 		this.rowEnd = config.rowEnd ?? config.rowStart;
 		this.columnStart = config.columnStart;
 		this.columnEnd = config.columnEnd ?? config.columnStart;
+
+		this._cache = new Map();
 	}
 
 	public _set_cache(guildId: string, data: string[][]): void
 	{
-		if (this._cache === undefined)
-		{
-			this._cache = new Map();
-		}
-
 		this._cache.set(guildId, SheetEntryTypes[this.type]["get"](data) as ReturnType<typeof SheetEntryTypes[Type]["get"]>);
 	}
 
 	public async fetch(guildId: string): Promise<ReturnType<typeof SheetEntryTypes[Type]["get"]>>
 	{
-		if (this._cache === undefined || !this._cache.has(guildId))
+		if (!this.moduleSheet)
+		{
+			Debug.error(`ModuleSheetEntry of type '${this.type}' has no module sheet.`);
+			return SheetEntryTypes[this.type]["get"]([]) as ReturnType<typeof SheetEntryTypes[Type]["get"]>;
+		}
+
+		if (!this._cache.has(guildId))
 		{
 			await this.moduleSheet.fetch(guildId);
 		}
 
-		return this._cache.get(guildId);
+		const result = this._cache.get(guildId);
+
+		if (!result)
+		{
+			Debug.error(`ModuleSheetEntry of type '${this.type}' failed to fetch.`);
+			return SheetEntryTypes[this.type]["get"]([]) as ReturnType<typeof SheetEntryTypes[Type]["get"]>;
+		}
+
+		return result;
 	}
 
-	public push(guildId: string): Promise<void> { return }
-	public pushAll(): Promise<void> { return }
+	public async push(guildId: string): Promise<void> {  }
+	public async pushAll(): Promise<void> { }
 }
 
 export class WritableModuleSheetEntry<Type extends keyof typeof SheetEntryTypes> extends ModuleSheetEntry<Type>
@@ -266,47 +280,67 @@ export class WritableModuleSheetEntry<Type extends keyof typeof SheetEntryTypes>
 	protected _writeCache: Map<string, ReturnType<typeof SheetEntryTypes[Type]["get"]>>;
 	public get writeCache(): Map<string, ReturnType<typeof SheetEntryTypes[Type]["get"]>> { return this._writeCache; }
 
+	constructor(type: Type, config: { rowStart: number, rowEnd?: number, columnStart: number, columnEnd?: number })
+	{
+		super(type, config);
+
+		this._writeCache = new Map();
+	}
+
 	public _set_cache(guildId: string, data: string[][]): void
 	{
 		super._set_cache(guildId, data);
 
-		if (this._writeCache === undefined)
-		{
-			this._writeCache = new Map();
-		}
-
 		for (const [key, value] of this._cache)
 		{
 			if (!this._writeCache.has(key))
+				// @ts-ignore
 				this._writeCache.set(key, SheetEntryTypes[this.type]["copy"](value));
 		}
 	}
 
 	public async fetch(guildId: string): Promise<ReturnType<typeof SheetEntryTypes[Type]["get"]>>
 	{
-		if (this._writeCache === undefined || !this._writeCache.has(guildId))
+		if (!this.moduleSheet)
+		{
+			Debug.error(`ModuleSheetEntry of type '${this.type}' has no module sheet.`);
+			return SheetEntryTypes[this.type]["get"]([]) as ReturnType<typeof SheetEntryTypes[Type]["get"]>;
+		}
+
+		if (!this._writeCache.has(guildId))
 		{
 			await this.moduleSheet.fetch(guildId);
 		}
 
-		return this._writeCache.get(guildId);
+		const result = this._writeCache.get(guildId);
+
+		if (!result)
+		{
+			Debug.error(`ModuleSheetEntry of type '${this.type}' failed to fetch.`);
+			return SheetEntryTypes[this.type]["get"]([]) as ReturnType<typeof SheetEntryTypes[Type]["get"]>;
+		}
+
+		return result;
 	}
 
 	public override async push(guildId: string): Promise<void>
 	{
-		if (this._writeCache === undefined)
+		if (!this.moduleSheet)
 		{
-			Debug.warning(`ModuleSheetEntry ${this.moduleSheet.sheetName} ${this.type} has no write cache.`);
+			Debug.error(`ModuleSheetEntry of type '${this.type}' has no module sheet. Cannot push.`);
 			return;
 		}
 
-		if (!this._writeCache.has(guildId))
+		const writeData = this._writeCache.get(guildId);
+
+		if (!writeData)
 		{
 			Debug.warning(`ModuleSheetEntry ${this.moduleSheet.sheetName} ${this.type} has no write cache for guild ${guildId}.`);
 			return;
 		}
 
-		const _data = SheetEntryTypes[this.type]["set"](this._writeCache.get(guildId));
+		// @ts-ignore
+		const _data = SheetEntryTypes[this.type]["set"](writeData);
 
 		if (_data === null)
 		{
@@ -324,10 +358,6 @@ export class WritableModuleSheetEntry<Type extends keyof typeof SheetEntryTypes>
 			}
 		}).then((data) =>
 		{
-			for (const [key, value] of this._writeCache)
-			{
-				this._cache.set(key, SheetEntryTypes[this.type]["copy"](value));
-			}
 		}).catch((error) =>
 		{
 			Debug.error(`Error!`, error);
@@ -396,7 +426,7 @@ export class WritableColumnedMatrixSheet extends WritableModuleSheetEntry<"Strin
 		return this.getColumnStringData(guildId, column).then((data) => data.map((cell) => cell == "" ? 0 : Number(cell)));
 	}
 
-	public getCellNumberData(guildId: string, rowSearch: RowSearch, column: number): Promise<number | undefined>
+	public getCellNumberData(guildId: string, rowSearch: RowSearch, column: number): Promise<number>
 	{
 		return this.getCellStringData(guildId, rowSearch, column).then((data) => (!data || Number.isNaN(data) || data == "") ? 0 : Number(data));
 	}

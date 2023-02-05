@@ -1,4 +1,5 @@
 import ClientWrapper from "@/ClientWrapper";
+import QuickReplies from "@/messaging/QuickReplies";
 import { BotModule } from "@/types";
 import { SlashCommandBuilder, PermissionFlagsBits } from "discord.js";
 
@@ -14,6 +15,11 @@ export default {
 			.setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 		async (i) =>
 		{
+			if (!i.guildId)
+			{
+				return await i.reply(QuickReplies.interactionNeedsGuild);
+			}
+
 			await i.deferReply({ ephemeral: true });
 			await ClientWrapper.Instance.updateModuleSheets(i.guildId);
 			await i.editReply("Module sheets refreshed.");

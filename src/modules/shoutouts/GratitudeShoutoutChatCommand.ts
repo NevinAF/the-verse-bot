@@ -1,6 +1,7 @@
 import { GoogleSheets } from "@/apis";
 import Debug from "@/debug";
 import { Authors, Icons } from "@/messaging";
+import QuickReplies from "@/messaging/QuickReplies";
 import { BotModule } from "@/types";
 import { APIEmbed, ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
 
@@ -10,6 +11,11 @@ namespace GratitudeShoutoutChatCommand
 
 	export async function GratitudeShoutout(interaction: ChatInputCommandInteraction)
 	{
+		if (!interaction.guild)
+		{
+			return await interaction.reply(QuickReplies.interactionNeedsGuild);
+		}
+
 		const who = interaction.options.getUser("who");
 		const message = interaction.options.getString("message");
 

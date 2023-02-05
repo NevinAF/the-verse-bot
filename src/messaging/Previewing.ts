@@ -14,15 +14,17 @@ namespace Previewing
 
 	export function EmbeddedPreviewMessage(msg: Message<boolean>): APIEmbed[]
 	{
+		const avatarURL = msg.author.avatarURL();
 		var options: APIEmbed[] = [{
 			color: 0xA020F0, 
 			title: "Preview of Message:",
 			description: "Sent by: " + msg.author.username + " on <t:" + msg.createdTimestamp + ">",
-			thumbnail: { url: msg.author.avatarURL() }
+			thumbnail: avatarURL ? { url: avatarURL } : undefined,
 		}];
 
 		if (msg.author.bot)
 			if (msg.embeds && msg.embeds.length > 0)
+				// @ts-ignore
 				msg.embeds.forEach(e => options.push(e));
 
 		if (msg.content)

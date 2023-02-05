@@ -12,7 +12,7 @@ async function PollButton(btn: ButtonInteraction)
 	const msg = await Fetching.buttonMessage(btn);
 	if (!msg) return;
 
-	if (!msg.embeds || msg.embeds.length != 1 || msg.embeds[0].fields.length < 2 || !msg.components)
+	if (!msg.embeds || msg.embeds.length != 1 || msg.embeds[0].fields.length < 2 || !msg.components || !msg.embeds[0].footer)
 	{
 		await btn.reply({ embeds: [{
 			author: Authors.Error,

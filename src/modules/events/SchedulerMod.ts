@@ -87,7 +87,7 @@ function createModal({
 		);
 }
 
-let lastFailedEvent: [lastUser: string, data: EventData] = null;
+let lastFailedEvent: [lastUser: string, data: EventData] | undefined;
 
 function failWithError(i: ModalSubmitInteraction | ChatInputCommandInteraction, message: string, data: EventData): Promise<any>
 {
@@ -146,8 +146,8 @@ export default {
 		async (i) =>
 		{
 			let eventData: EventData = {}
-			let startTime: string = null;
-			let endTime: string = null;
+			let startTime: string | undefined;
+			let endTime: string | undefined;
 			if (lastFailedEvent && lastFailedEvent[0] == i.user.id)
 			{
 				eventData = lastFailedEvent[1];
@@ -227,7 +227,7 @@ export default {
 						type: ComponentType.Button,
 						style: ButtonStyle.Link,
 						label: 'Google Calendar',
-						url: eventData.htmlLink,
+						url: eventData?.htmlLink ?? 'https://calendar.google.com/calendar/r',
 						emoji: { name: '📅' },
 					}, {
 						type: ComponentType.Button,
@@ -244,17 +244,14 @@ export default {
 					try
 					{
 						const interaction = await msg.awaitMessageComponent({ componentType: ComponentType.Button, time: 1000 * 60 * 5 });
-						if (!interaction) return;
-
-						
-
+						if (!interaction || !interaction.guild) return;
 
 						// if the event is this week, then get the discord event
 						if (startDate.getTime() < new Date().getTime() + 1000 * 60 * 60 * 24 * 7 && startDate.getTime() > new Date().getTime())
 						{
 							let events = await interaction.guild.scheduledEvents.fetch()
 							let currentFilter: Collection<string, GuildScheduledEvent<GuildScheduledEventStatus>>;
-							let thisEvent: GuildScheduledEvent<GuildScheduledEventStatus> | null = null;
+							let thisEvent: GuildScheduledEvent<GuildScheduledEventStatus> | undefined;
 
 							// Debug.log(data.title, startDate.getTime(), endDate.getTime());
 
@@ -264,7 +261,7 @@ export default {
 
 								if (events.size >= 1)
 								{
-									currentFilter = events.filter(e => e.name == eventData.summary);
+									currentFilter = events.filter(e => e.name == eventData?.summary);
 									events = currentFilter;
 								}
 
@@ -310,7 +307,7 @@ export default {
 									type: ComponentType.Button,
 									style: ButtonStyle.Link,
 									label: 'Google Calendar',
-									url: eventData.htmlLink,
+									url: eventData?.htmlLink ?? 'https://calendar.google.com/calendar/r',
 									emoji: { name: '📅' },
 								}]),
 							});
@@ -329,7 +326,7 @@ export default {
 								type: ComponentType.Button,
 								style: ButtonStyle.Link,
 								label: 'Google Calendar',
-								url: eventData.htmlLink,
+								url: eventData?.htmlLink ?? 'https://calendar.google.com/calendar/r',
 								emoji: { name: '📅' },
 							}])
 						});

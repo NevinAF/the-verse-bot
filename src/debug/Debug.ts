@@ -136,7 +136,12 @@ class Debug
 
 	private static _print(args: any[], stackTrace: boolean = false)
 	{
-		const callInfo: StackParser.CallEntry = StackParser.getCallInfo(3); // 0 = _print, 1 = log wrapper, 2 = caller
+		const callInfo: StackParser.CallEntry | null = StackParser.getCallInfo(3); // 0 = _print, 1 = log wrapper, 2 = caller
+		if (!callInfo)
+		{
+			console.log(...args);
+			return;
+		}
 		const prefix: string = Debug.getCallerPrefix(callInfo.fileName, callInfo.lineNumber, callInfo.column);
 
 		const message = Debug.toStrings(args).join(" ");

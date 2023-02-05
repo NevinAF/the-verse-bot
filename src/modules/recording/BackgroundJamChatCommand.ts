@@ -14,6 +14,16 @@ const backgroundMusicClips = [
 
 function backgroundJam(interaction: ChatInputCommandInteraction)
 {
+	if (!interaction.guild)
+	{
+		return interaction.reply({
+			embeds: [{
+				author: Authors.Error,
+				description: "This command can only be used in a guild!"
+			}], ephemeral: true
+		});
+	}
+
 	const member = interaction.guild.members.cache.get(interaction.user.id);
 	const channel = member?.voice?.channel;
 	if (!channel)

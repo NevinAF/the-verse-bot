@@ -1,24 +1,25 @@
-import { ApplicationCommandType, ButtonInteraction, CacheType, Channel, ChannelManager, ChatInputCommandInteraction, Client, CommandInteraction, ContextMenuCommandBuilder, GatewayIntentBits, Guild, GuildMember, GuildScheduledEvent, Interaction, Message, MessageContextMenuCommandInteraction, MessageReaction, ModalSubmitInteraction, PermissionFlagsBits, PermissionResolvable, PermissionsBitField, Presence, Routes, ThreadChannel, Typing, User, UserContextMenuCommandInteraction, VoiceState } from "discord.js";
-import { ChatCommand, Delegate, BotModule, ModuleSheet, VoiceStateStamp, PresenceStamp } from "@/types";
+import { ApplicationCommandType, ButtonInteraction, CacheType, Channel, ChannelManager, ChatInputCommandInteraction, Client, Collection, CommandInteraction, ContextMenuCommandBuilder, GatewayIntentBits, Guild, GuildMember, GuildScheduledEvent, Interaction, Message, MessageContextMenuCommandInteraction, MessageReaction, ModalSubmitInteraction, PartialGuildMember, PartialMessage, PartialMessageReaction, PartialUser, PermissionFlagsBits, PermissionResolvable, PermissionsBitField, Presence, Routes, ThreadChannel, Typing, User, UserContextMenuCommandInteraction, VoiceState } from "discord.js";
+import { ChatCommand, Delegate, BotModule, ModuleSheet, StateUpdateData } from "@/types";
 import Debug from "@/debug";
 import Resolvers from "@/util/Resolvers";
 import { Authors, Fetching } from "@/messaging";
+import { on } from "events";
 
 class ExtraGuildData
 {
 	public readonly VoiceStateStamps: Map<string, number> = new Map();
 	public readonly PresenceStamps: Map<string, number> = new Map();
 
-	public getAndUpdateVoiceStateStamp(userId: string, now: number): number
+	public getAndUpdateVoiceStateStamp(userId: string, now: number, readyTime?: number): number
 	{
-		const stamp = this.VoiceStateStamps.get(userId) ?? ClientWrapper.Client.readyTimestamp;
+		const stamp = this.VoiceStateStamps.get(userId) ?? readyTime ?? ClientWrapper.Client.readyTimestamp ?? now;
 		this.VoiceStateStamps.set(userId, now);
 		return stamp;
 	}
 
 	public getAndUpdatePresenceStamp(userId: string, now: number, readyTime?: number ): number
 	{
-		const stamp = this.PresenceStamps.get(userId) ?? readyTime ?? ClientWrapper.Client.readyTimestamp;
+		const stamp = this.PresenceStamps.get(userId) ?? readyTime ?? ClientWrapper.Client.readyTimestamp ?? now;
 		this.PresenceStamps.set(userId, now);
 		return stamp;
 	}
@@ -34,9 +35,7 @@ class ClientWrapper
 
 	private client: Client;
 	public static get Client(): Client { return ClientWrapper.Instance.client; }
-	public static get ClientID(): string { return ClientWrapper.Instance.client.user.id; }
 	public static get ClientChannels(): ChannelManager { return ClientWrapper.Instance.client.channels; }
-	public static get ClientUptime(): number { return ClientWrapper.Instance.client.uptime; }
 
 	private readonly extraGuildData: Map<string, ExtraGuildData> = new Map();
 	public getExtraGuildData(guildId: string): ExtraGuildData
@@ -84,6 +83,9 @@ class ClientWrapper
 		{
 			const { REST } = require('@discordjs/rest');
 			const rest = new REST({ version: '9' }).setToken(process.env.DISCORD_TOKEN);
+
+			if (!process.env.CLIENT_ID)
+				return false;
 	
 			await rest.put(
 				Routes.applicationGuildCommands(
@@ -140,11 +142,13 @@ class ClientWrapper
 
 	public registerModule(module: BotModule)
 	{
-		const entries = Object.entries(module) as [keyof BotModule, any][];
+		const entries = Object.entries(module) as [keyof BotModule, any][] as [string, any[]][];
 		for (const [key, value] of entries)
 		{
 			Debug.assert(key in ClientWrapper.Instance, `Module tried to register unknown key: ${key}`);
+			// @ts-ignore
 			Debug.assert(typeof ClientWrapper.Instance[key] === "function", `Module tried to register key: ${key} which is not a function.`);
+			// @ts-ignore
 			ClientWrapper.Instance[key].call(ClientWrapper.Instance, ...value);
 		}
 	}
@@ -161,13 +165,13 @@ class ClientWrapper
 	private onMessageCreate(callback: Delegate<[Message<boolean>]>) { ClientWrapper.Instance.onMessageCreateCallbacks.push(callback) }
 	private _onMessageCreate(message: Message<boolean>) { ClientWrapper.Instance.onMessageCreateCallbacks.forEach(callback => Resolvers.safelyInvokeDelegate(callback, message)); }
 
-	private onMessageDeleteCallbacks: Delegate<[Message<boolean>]>[] = [];
-	private onMessageDelete(callback: Delegate<[Message<boolean>]>) { ClientWrapper.Instance.onMessageDeleteCallbacks.push(callback) }
-	private _onMessageDelete(message: Message<boolean>) { ClientWrapper.Instance.onMessageDeleteCallbacks.forEach(callback => Resolvers.safelyInvokeDelegate(callback, message)); }
+	private onMessageDeleteCallbacks: Delegate<[Message<boolean> | PartialMessage]>[] = [];
+	private onMessageDelete(callback: Delegate<[Message<boolean> | PartialMessage]>) { ClientWrapper.Instance.onMessageDeleteCallbacks.push(callback) }
+	private _onMessageDelete(message: Message<boolean> | PartialMessage) { ClientWrapper.Instance.onMessageDeleteCallbacks.forEach(callback => Resolvers.safelyInvokeDelegate(callback, message)); }
 
-	private onMessageUpdateCallbacks: Delegate<[Message<boolean>, Message<boolean>]>[] = [];
-	private onMessageUpdate(callback: Delegate<[Message<boolean>, Message<boolean>]>) { ClientWrapper.Instance.onMessageUpdateCallbacks.push(callback) }
-	private _onMessageUpdate(oldMessage: Message<boolean>, newMessage: Message<boolean>) { ClientWrapper.Instance.onMessageUpdateCallbacks.forEach(callback => Resolvers.safelyInvokeDelegate(callback, oldMessage, newMessage)); }
+	private onMessageUpdateCallbacks: Delegate<[Message<boolean> | PartialMessage, Message<boolean> | PartialMessage]>[] = [];
+	private onMessageUpdate(callback: Delegate<[Message<boolean> | PartialMessage, Message<boolean> | PartialMessage]>) { ClientWrapper.Instance.onMessageUpdateCallbacks.push(callback) }
+	private _onMessageUpdate(oldMessage: Message<boolean> | PartialMessage, newMessage: Message<boolean> | PartialMessage) { ClientWrapper.Instance.onMessageUpdateCallbacks.forEach(callback => Resolvers.safelyInvokeDelegate(callback, oldMessage, newMessage)); }
 
 
 	private onInteractionCreateCallbacks: Delegate<[Interaction<CacheType>]>[] = [];
@@ -287,19 +291,36 @@ class ClientWrapper
 		}
 	}
 
-	private onVoiceStateUpdateCallbacks: Delegate<[VoiceStateStamp, VoiceStateStamp]>[] = [];
-	private registerVoiceStateUpdate(callback: Delegate<[VoiceStateStamp, VoiceStateStamp]>)
+	private onVoiceStateUpdateCallbacks: Delegate<[VoiceState, VoiceState, StateUpdateData]>[] = [];
+	private registerVoiceStateUpdate(callback: Delegate<[VoiceState, VoiceState, StateUpdateData]>)
 	{
 		ClientWrapper.Instance.onVoiceStateUpdateCallbacks.push(callback);
 	}
 	private _onVoiceStateUpdate(oldState: VoiceState, newState: VoiceState)
 	{
-		const currentTime = Date.now();
-		const oldTime = ClientWrapper.Instance.getExtraGuildData(oldState?.guild?.id ?? newState.guild.id).getAndUpdateVoiceStateStamp(oldState?.member?.id ?? newState.member.id, currentTime);
+		const guildId = oldState?.guild?.id ?? oldState.guild?.id;
+		if (!guildId)
+		{
+			Debug.warning("Voice State update without guild id!");
+			return;
+		}
 
-		ClientWrapper.Instance.onVoiceStateUpdateCallbacks.forEach(callback => Resolvers.safelyInvokeDelegate(callback,
-			{ state: oldState, timestamp: oldTime },
-			{ state: newState, timestamp: currentTime }));
+		const memberId = newState?.member?.id ?? newState.member?.id;
+		if (!memberId)
+		{
+			Debug.warning("Voice State update without member id!");
+			return;
+		}
+
+		const currentTime = Date.now();
+		const oldTime = ClientWrapper.Instance.getExtraGuildData(guildId).getAndUpdateVoiceStateStamp(memberId, currentTime);
+
+		ClientWrapper.Instance.onVoiceStateUpdateCallbacks.forEach(callback => Resolvers.safelyInvokeDelegate(callback, oldState, newState, {
+			newTimestamp: currentTime,
+			oldTimestamp: oldTime,
+			guildId: guildId,
+			memberId: memberId
+		}));
 	}
 
 	private onExitingCallbacks: Delegate<[]>[] = [];
@@ -323,12 +344,12 @@ class ClientWrapper
 	private registerBackup(callback: Delegate<[crashed?: boolean]>) { ClientWrapper.Instance.backupCallbacks.push(callback) }
 	public _backup(crashed: boolean)
 	{
-		Debug.log("Backing up..." + ClientWrapper.Instance.moduleSheets.map(sheet => sheet.sheetName).join(", "));
+		Debug.log("Backing up..." + ClientWrapper.Instance.moduleSheets?.map(sheet => sheet.sheetName).join(", "));
 
 		return Promise.all([
 			Promise.all(ClientWrapper.Instance.backupCallbacks.map(callback => Resolvers.safelyInvokeDelegate(callback, crashed)))
 				.then(() => Debug.event("Backup", "Backup complete.")),
-			Promise.all(ClientWrapper.Instance.moduleSheets.map(sheet => sheet.pushAll().catch(e => Debug.error("Error pushing module sheet: " + sheet.sheetName, e))))
+			Promise.all(ClientWrapper.Instance.moduleSheets?.map(sheet => sheet.pushAll().catch(e => Debug.error("Error pushing module sheet: " + sheet.sheetName, e))) ?? [])
 				.then(() => Debug.event("Backup", "Module sheets pushed."))
 		]);
 	}
@@ -337,7 +358,7 @@ class ClientWrapper
 		return ClientWrapper.Instance._backup(false);
 	}
 
-	private moduleSheets: ModuleSheet[] = null;
+	private moduleSheets?: ModuleSheet[];
 	public registerModuleSheets(moduleSheet: ModuleSheet[])
 	{
 		if (ClientWrapper.Instance.moduleSheets)
@@ -348,8 +369,15 @@ class ClientWrapper
 
 		ClientWrapper.Instance.moduleSheets = moduleSheet;
 	}
-	public async updateModuleSheets(guildId)
+
+	public async updateModuleSheets(guildId: string)
 	{
+		if (!ClientWrapper.Instance.moduleSheets)
+		{
+			Debug.warning("Module sheets not registered!");
+			return;
+		}
+
 		await Promise.all(ClientWrapper.Instance.moduleSheets.map(moduleSheet => moduleSheet.fetch(guildId)));
 	}
 
@@ -360,16 +388,33 @@ class ClientWrapper
 		ClientWrapper.Instance.onGuildCreateCallbacks.forEach(callback => Resolvers.safelyInvokeDelegate(callback, guild));
 	}
 
-	private onPresenceUpdateCallbacks: Delegate<[PresenceStamp, PresenceStamp]>[] = [];
-	private registerPresenceUpdate(callback: Delegate<[PresenceStamp, PresenceStamp]>) { ClientWrapper.Instance.onPresenceUpdateCallbacks.push(callback) }
-	private _onPresenceUpdate(oldPresence: Presence, newPresence: Presence)
+	private onPresenceUpdateCallbacks: Delegate<[Presence | null, Presence, StateUpdateData]>[] = [];
+	private registerPresenceUpdate(callback: Delegate<[Presence | null, Presence, StateUpdateData]>) { ClientWrapper.Instance.onPresenceUpdateCallbacks.push(callback) }
+	private _onPresenceUpdate(oldPresence: Presence | null, newPresence: Presence)
 	{
-		const currentTime = Date.now();
-		const oldTime = ClientWrapper.Instance.getExtraGuildData(oldPresence?.guild?.id ?? newPresence.guild.id).getAndUpdatePresenceStamp(oldPresence?.member?.id ?? newPresence.member.id, currentTime);
+		const guildId = oldPresence?.guild?.id ?? newPresence.guild?.id;
+		if (!guildId)
+		{
+			Debug.warning("Presence update without guild id!");
+			return;
+		}
 
-		ClientWrapper.Instance.onPresenceUpdateCallbacks.forEach(callback => Resolvers.safelyInvokeDelegate(callback,
-			{ presence: oldPresence, timestamp: oldTime },
-			{ presence: newPresence, timestamp: currentTime }));
+		const memberId = oldPresence?.member?.id ?? newPresence.member?.id;
+		if (!memberId)
+		{
+			Debug.warning("Presence update without member id!");
+			return;
+		}
+
+		const currentTime = Date.now();
+		const oldTime = ClientWrapper.Instance.getExtraGuildData(guildId).getAndUpdatePresenceStamp(memberId, currentTime);
+
+		ClientWrapper.Instance.onPresenceUpdateCallbacks.forEach(callback => Resolvers.safelyInvokeDelegate(callback, oldPresence, newPresence, {
+			oldTimestamp: oldTime,
+			newTimestamp: currentTime,
+			memberId: memberId,
+			guildId: guildId
+		}));
 	}
 
 	private onThreadCreateCallbacks: Delegate<[ThreadChannel]>[] = [];
@@ -407,9 +452,9 @@ class ClientWrapper
 		ClientWrapper.Instance.onGuildScheduledEventDeleteCallbacks.forEach(callback => Resolvers.safelyInvokeDelegate(callback, event));
 	}
 
-	private onGuildScheduledEventUpdateCallbacks: Delegate<[GuildScheduledEvent, GuildScheduledEvent]>[] = [];
-	private registerGuildScheduledEventUpdate(callback: Delegate<[GuildScheduledEvent, GuildScheduledEvent]>) { ClientWrapper.Instance.onGuildScheduledEventUpdateCallbacks.push(callback) }
-	private _onGuildScheduledEventUpdate(oldEvent: GuildScheduledEvent, newEvent: GuildScheduledEvent)
+	private onGuildScheduledEventUpdateCallbacks: Delegate<[GuildScheduledEvent | null, GuildScheduledEvent]>[] = [];
+	private registerGuildScheduledEventUpdate(callback: Delegate<[GuildScheduledEvent | null, GuildScheduledEvent]>) { ClientWrapper.Instance.onGuildScheduledEventUpdateCallbacks.push(callback) }
+	private _onGuildScheduledEventUpdate(oldEvent: GuildScheduledEvent | null, newEvent: GuildScheduledEvent)
 	{
 		ClientWrapper.Instance.onGuildScheduledEventUpdateCallbacks.forEach(callback => Resolvers.safelyInvokeDelegate(callback, oldEvent, newEvent));
 	}
@@ -435,44 +480,44 @@ class ClientWrapper
 		ClientWrapper.Instance.onGuildMemberAddCallbacks.forEach(callback => Resolvers.safelyInvokeDelegate(callback, member));
 	}
 
-	private onGuildMemberRemoveCallbacks: Delegate<[GuildMember]>[] = [];
-	private registerGuildMemberRemove(callback: Delegate<[GuildMember]>) { ClientWrapper.Instance.onGuildMemberRemoveCallbacks.push(callback) }
-	private _onGuildMemberRemove(member: GuildMember)
+	private onGuildMemberRemoveCallbacks: Delegate<[GuildMember | PartialGuildMember]>[] = [];
+	private registerGuildMemberRemove(callback: Delegate<[GuildMember | PartialGuildMember]>) { ClientWrapper.Instance.onGuildMemberRemoveCallbacks.push(callback) }
+	private _onGuildMemberRemove(member: GuildMember | PartialGuildMember)
 	{
 		ClientWrapper.Instance.onGuildMemberRemoveCallbacks.forEach(callback => Resolvers.safelyInvokeDelegate(callback, member));
 	}
 
-	private onGuildMemberUpdateCallbacks: Delegate<[GuildMember, GuildMember]>[] = [];
-	private registerGuildMemberUpdate(callback: Delegate<[GuildMember, GuildMember]>) { ClientWrapper.Instance.onGuildMemberUpdateCallbacks.push(callback) }
-	private _onGuildMemberUpdate(oldMember: GuildMember, newMember: GuildMember)
+	private onGuildMemberUpdateCallbacks: Delegate<[GuildMember | PartialGuildMember, GuildMember]>[] = [];
+	private registerGuildMemberUpdate(callback: Delegate<[GuildMember | PartialGuildMember, GuildMember]>) { ClientWrapper.Instance.onGuildMemberUpdateCallbacks.push(callback) }
+	private _onGuildMemberUpdate(oldMember: GuildMember | PartialGuildMember, newMember: GuildMember)
 	{
 		ClientWrapper.Instance.onGuildMemberUpdateCallbacks.forEach(callback => Resolvers.safelyInvokeDelegate(callback, oldMember, newMember));
 	}
 
-	private onMessageReactionAddCallbacks: Delegate<[MessageReaction, User]>[] = [];
-	private registerMessageReactionAdd(callback: Delegate<[MessageReaction, User]>) { ClientWrapper.Instance.onMessageReactionAddCallbacks.push(callback) }
-	private _onMessageReactionAdd(reaction: MessageReaction, user: User)
+	private onMessageReactionAddCallbacks: Delegate<[MessageReaction | PartialMessageReaction, User | PartialUser]>[] = [];
+	private registerMessageReactionAdd(callback: Delegate<[MessageReaction | PartialMessageReaction, User | PartialUser]>) { ClientWrapper.Instance.onMessageReactionAddCallbacks.push(callback) }
+	private _onMessageReactionAdd(reaction: MessageReaction | PartialMessageReaction, user: User | PartialUser)
 	{
 		ClientWrapper.Instance.onMessageReactionAddCallbacks.forEach(callback => Resolvers.safelyInvokeDelegate(callback, reaction, user));
 	}
 
-	private onMessageReactionRemoveCallbacks: Delegate<[MessageReaction, User]>[] = [];
-	private registerMessageReactionRemove(callback: Delegate<[MessageReaction, User]>) { ClientWrapper.Instance.onMessageReactionRemoveCallbacks.push(callback) }
-	private _onMessageReactionRemove(reaction: MessageReaction, user: User)
+	private onMessageReactionRemoveCallbacks: Delegate<[MessageReaction | PartialMessageReaction, User | PartialUser]>[] = [];
+	private registerMessageReactionRemove(callback: Delegate<[MessageReaction | PartialMessageReaction, User | PartialUser]>) { ClientWrapper.Instance.onMessageReactionRemoveCallbacks.push(callback) }
+	private _onMessageReactionRemove(reaction: MessageReaction | PartialMessageReaction, user: User | PartialUser)
 	{
 		ClientWrapper.Instance.onMessageReactionRemoveCallbacks.forEach(callback => Resolvers.safelyInvokeDelegate(callback, reaction, user));
 	}
 
-	private onMessageReactionRemoveAllCallbacks: Delegate<[Message]>[] = [];
-	private registerMessageReactionRemoveAll(callback: Delegate<[Message]>) { ClientWrapper.Instance.onMessageReactionRemoveAllCallbacks.push(callback) }
-	private _onMessageReactionRemoveAll(message: Message)
+	private onMessageReactionRemoveAllCallbacks: Delegate<[Message<boolean> | PartialMessage, Collection<string, MessageReaction>]>[] = [];
+	private registerMessageReactionRemoveAll(callback: Delegate<[Message<boolean> | PartialMessage, Collection<string, MessageReaction>]>) { ClientWrapper.Instance.onMessageReactionRemoveAllCallbacks.push(callback) }
+	private _onMessageReactionRemoveAll(message: Message<boolean> | PartialMessage, reactions: Collection<string, MessageReaction>)
 	{
-		ClientWrapper.Instance.onMessageReactionRemoveAllCallbacks.forEach(callback => Resolvers.safelyInvokeDelegate(callback, message));
+		ClientWrapper.Instance.onMessageReactionRemoveAllCallbacks.forEach(callback => Resolvers.safelyInvokeDelegate(callback, message, reactions));
 	}
 
-	private onMessageReactionRemoveEmojiCallbacks: Delegate<[MessageReaction]>[] = [];
-	private registerMessageReactionRemoveEmoji(callback: Delegate<[MessageReaction]>) { ClientWrapper.Instance.onMessageReactionRemoveEmojiCallbacks.push(callback) }
-	private _onMessageReactionRemoveEmoji(reaction: MessageReaction)
+	private onMessageReactionRemoveEmojiCallbacks: Delegate<[MessageReaction | PartialMessageReaction]>[] = [];
+	private registerMessageReactionRemoveEmoji(callback: Delegate<[MessageReaction | PartialMessageReaction]>) { ClientWrapper.Instance.onMessageReactionRemoveEmojiCallbacks.push(callback) }
+	private _onMessageReactionRemoveEmoji(reaction: MessageReaction | PartialMessageReaction)
 	{
 		ClientWrapper.Instance.onMessageReactionRemoveEmojiCallbacks.forEach(callback => Resolvers.safelyInvokeDelegate(callback, reaction));
 	}

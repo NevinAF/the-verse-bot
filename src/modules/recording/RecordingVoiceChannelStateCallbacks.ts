@@ -9,21 +9,24 @@ export default {
 
 	registerVoiceStateUpdate: [(oldState, newState) =>
 	{
-		if (oldState.state.channelId === newState.state.channelId || (oldState.state.member ?? newState.state.member).user.bot)
+		if (oldState.channelId === newState.channelId || (oldState.member ?? newState.member)?.user.bot)
 			return;
 
-		const left = RecordingSession.Sessions.get(oldState.state.channelId)?.leaveUser(oldState.state.member.user.id, true);
-		let joined: Promise<any>;
+		const left = (oldState.channelId && oldState.member?.user.id) &&
+			RecordingSession.Sessions.get(oldState.channelId)?.leaveUser(oldState.member.user.id, true);
+		let joined: Promise<any> | undefined = undefined;
 
-		if (newState.state.channelId !== null && RecordingSession.Sessions.has(newState.state.channelId))
+		if (newState.channelId && newState.member?.user.id && RecordingSession.Sessions.has(newState.channelId))
 		{
+			const newStateUserId = newState.member.user.id;
+			const newStateChannelId = newState.channelId;
 			joined = Promise.all([
-				newState.state.guild.members.fetch(newState.state.member.user.id),
-				AutoRecordRole.fetch(newState.state.guild.id)
+				newState.guild.members.fetch(newState.member.user.id),
+				AutoRecordRole.fetch(newState.guild.id)
 			])
 			.then(([member, role]) =>
 			{
-				return RecordingSession.Sessions.get(newState.state.channelId)?.joinUser(newState.state.member.user.id, !member.roles.cache.has(role));
+				return RecordingSession.Sessions.get(newStateChannelId)?.joinUser(newStateUserId, !member.roles.cache.has(role));
 			});
 		}
 

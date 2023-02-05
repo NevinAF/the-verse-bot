@@ -1,10 +1,16 @@
 import { Authors } from "@/messaging";
+import QuickReplies from "@/messaging/QuickReplies";
 import { BotModule } from "@/types";
 import { ButtonInteraction } from "discord.js";
 import RecordingSession from "./RecordingSession";
 
 function leaveRecording(interaction: ButtonInteraction)
 {
+	if (!interaction.guild)
+	{
+		return interaction.reply(QuickReplies.interactionNeedsGuild);
+	}
+
 	const member = interaction.guild.members.cache.get(interaction.user.id);
 	const channel = member?.voice?.channel;
 	if (!channel)
@@ -15,6 +21,11 @@ function leaveRecording(interaction: ButtonInteraction)
 				description: "You must be in a voice channel in order to leave a recording session."
 			}], ephemeral: true
 		});
+	}
+
+	if (interaction.message.embeds.length < 0 || !interaction.message.embeds[0].description)
+	{
+		return interaction.reply(QuickReplies.interactionError("The button that you have clicked is not on a message with the correct recording session information. This is likely an internal error, please report it to admins."));
 	}
 
 	const message_channel = interaction.message.embeds[0].description.match(/<#(\d+)>/);

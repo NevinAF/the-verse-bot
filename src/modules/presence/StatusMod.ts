@@ -95,7 +95,7 @@ class StatusMod
 		const status = this.GetNewStatus();
 		ClientWrapper.Client.user?.setPresence(status);
 
-		Debug.event("StatUpd", `${status.status}: ${ActivityType[status.activities[0].type]} - ${status.activities[0].name}`);
+		Debug.event("StatUpd", `${status.status}: ${ActivityType[status.activities?.[0].type ?? ActivityType.Custom]} - ${status.activities?.[0].name}`);
 
 		if (!this.isIdle)
 		{

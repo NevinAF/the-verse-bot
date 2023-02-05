@@ -1,18 +1,40 @@
 import { Authors } from "@/messaging";
 import { BotModule } from "@/types";
-import { SlashCommandBuilder, CommandInteraction, CacheType } from "discord.js";
+import { SlashCommandBuilder, CommandInteraction, CacheType, ChatInputCommandInteraction } from "discord.js";
 
-async function ListRoleMembers(interaction: CommandInteraction<CacheType>)
+async function ListRoleMembers(interaction: ChatInputCommandInteraction<CacheType>)
 {
 	let content = "";
 
-	const role = interaction.options.get('role').role;
+	const role = interaction.options.getRole('role');
+
+	if (!role)
+	{
+		await interaction.reply({
+			embeds: [{
+				author: Authors.Error,
+				description: "Invalid parameters"
+			}], ephemeral: true
+		});
+		return;
+	}
+
+	if (!interaction.guild)
+	{
+		await interaction.reply({
+			embeds: [{
+				author: Authors.Error,
+				description: "Guild not found with this interaction"
+			}], ephemeral: true
+		});
+		return;
+	}
 
 	// Only used to update list of users.
 	await interaction.guild.members.fetch();
 
-	const users = interaction.guild.roles.cache.get(role.id).members.map(m => m.user.id);
-	users.forEach(u => content += `<@${u}>, `);
+	const members = interaction.guild.members.cache.filter(m => m.roles.cache.has(role.id));
+	members.forEach(u => content += `<@${u}>, `);
 
 	if (content == "") content = "No members were found.";
 	else content = content.substring(0, content.length - 2);

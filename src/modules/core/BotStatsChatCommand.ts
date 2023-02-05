@@ -18,7 +18,7 @@ export default {
 					color: 0x5A5A5A,
 					title: "Bot Stats",
 					description: [
-						["Uptime", Previewing.msToHuman(ClientWrapper.ClientUptime)],
+						["Uptime", ClientWrapper.Client.uptime ? Previewing.msToHuman(ClientWrapper.Client.uptime) : "Unknown"],
 						// ["Total Uses", ClientWrapper.Instance.GetUses(null)],
 						// ...ClientWrapper.Instance.GetAllUses()
 					].map(([key, value]) => `**${key}**: ${value}`).join("\n"),

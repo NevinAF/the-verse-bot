@@ -1,11 +1,17 @@
 import Debug from "@/debug";
 import { Authors } from "@/messaging";
+import QuickReplies from "@/messaging/QuickReplies";
 import { BotModule } from "@/types";
-import { APIEmbedField, ButtonInteraction } from "discord.js";
+import { ButtonInteraction } from "discord.js";
 import { updateRoleMessageEmbed } from "./Common";
 
 async function changeRole(interaction: ButtonInteraction)
 {
+	if (!interaction.guild)
+	{
+		return await interaction.reply(QuickReplies.interactionNeedsGuild);
+	}
+
 	await interaction.deferReply({ ephemeral: true });
 
 	const [member, roles] = await Promise.all([
@@ -19,7 +25,7 @@ async function changeRole(interaction: ButtonInteraction)
 	if (!role)
 	{
 		Debug.warning(`Role ${roleName} does not exist.`);
-		return interaction.editReply({
+		return await interaction.editReply({
 			embeds: [{
 				author: Authors.Error,
 				description: "The role that you have clicked does not exist. This is likely an internal error, please report it to admins."

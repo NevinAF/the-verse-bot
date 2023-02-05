@@ -2,6 +2,7 @@ import { GoogleSheets } from "@/apis";
 import Deezer from "@/apis/Dezzer";
 import Debug from "@/debug";
 import { Authors, Buttons, Emojis } from "@/messaging";
+import QuickReplies from "@/messaging/QuickReplies";
 import { BotModule } from "@/types";
 import { APIButtonComponent, ButtonStyle, ChatInputCommandInteraction, ComponentType, SlashCommandBuilder } from "discord.js";
 
@@ -11,6 +12,11 @@ namespace MusicShoutoutChatCommand
 
 	export async function MusicShoutout(interaction: ChatInputCommandInteraction)
 	{
+		if (!interaction.guild)
+		{
+			return await interaction.reply(QuickReplies.interactionNeedsGuild);
+		}
+
 		const songSearch = interaction.options.getString("song-search");
 
 		// Validate inputs
@@ -98,7 +104,7 @@ namespace MusicShoutoutChatCommand
 			])
 		});
 
-		const btn_interaction = await interaction.channel.awaitMessageComponent({ time: 1000 * 60 * 5 });
+		const btn_interaction = await interaction.channel?.awaitMessageComponent({ time: 1000 * 60 * 5 });
 
 		if (!btn_interaction)
 		{
@@ -122,10 +128,16 @@ namespace MusicShoutoutChatCommand
 		const trackEmbed = Deezer.CreateTrackEmbed(track);
 		trackEmbed.footer = { text: "Music Shout-out by " + member.displayName };
 		const [music_message, _1, _2] = await Promise.all([
-			interaction.channel.send({ embeds: [trackEmbed] }),
+			interaction.channel?.send({ embeds: [trackEmbed] }),
 			deferred_promise,
 			interaction.editReply({ components: [], embeds: [], content: "Shout-out Sent!" }).catch(() => { }),
 		]);
+
+		if (!music_message)
+		{
+			Debug.error("Failed to send music message!");
+			return;
+		}
 
 		cached_shoutouts.push(music_message.url);
 

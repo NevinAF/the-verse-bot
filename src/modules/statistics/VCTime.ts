@@ -1,17 +1,17 @@
-import { BotModule, VoiceStateStamp } from "@/types";
+import { BotModule, StateUpdateData } from "@/types";
 import { UserData, UserEntryData } from "@/database/UserDataModuleSheet";
 import { VoiceState } from "discord.js";
 
-export function VCTime(oldState: VoiceStateStamp, newState: VoiceStateStamp)
+export function VCTime(oldState: VoiceState, newState: VoiceState, data: StateUpdateData)
 {
-	if (oldState.state.channelId === null)
+	if (oldState.channelId === null || !oldState.member)
 		return;
 	
-	const duration = newState.timestamp - oldState.timestamp;
+	const duration = data.newTimestamp - data.oldTimestamp;
 
-	UserData.incrementCell(oldState.state.guild.id, {
+	UserData.incrementCell(oldState.guild.id, {
 		column: UserEntryData.UserID,
-		compareValue: oldState.state.member.id
+		compareValue: oldState.member.id
 	}, UserEntryData.VCTime, duration);
 }
 

@@ -1,10 +1,16 @@
 import { Authors } from "@/messaging";
+import QuickReplies from "@/messaging/QuickReplies";
 import { BotModule } from "@/types";
 import { ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
 import RecordingSession from "./RecordingSession";
 
 function recordCommand(interaction: ChatInputCommandInteraction)
 {
+	if (!interaction.guild)
+	{
+		return interaction.reply(QuickReplies.interactionNeedsGuild);
+	}
+
 	const member = interaction.guild.members.cache.get(interaction.user.id);
 	const channel = member?.voice?.channel;
 	if (!channel)
@@ -27,6 +33,7 @@ function recordCommand(interaction: ChatInputCommandInteraction)
 		});
 	}
 
+	// @ts-ignore - The guild as already been checked for null
 	return RecordingSession.CreateSession(interaction, channel);
 }
 
