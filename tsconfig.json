@@ -1,0 +1,26 @@
+{
+	"compilerOptions": {
+		"module": "CommonJS",
+		"esModuleInterop": true,
+		"strict": true,
+		"target": "es6",
+		"moduleResolution": "node",
+		"sourceMap": true,
+		"outDir": "dist",
+		"baseUrl": "./",
+		"paths": {
+			"@/*": ["src/*"],
+			"@public": ["public"],
+			"@public/*": ["public/*"],
+
+		}
+	},
+	"lib": [
+		"ES2021.String"
+	],
+	"include": ["src/**/*"],
+	"exclude": [
+		"dist",
+		"node_modules"
+	],
+}
