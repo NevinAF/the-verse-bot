@@ -1,10 +1,11 @@
-import { Authors } from "@/messaging";
+import Debug from "@/debug";
+import { Authors, Fetching } from "@/messaging";
 import QuickReplies from "@/messaging/QuickReplies";
 import { BotModule } from "@/types";
-import { ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
+import { ButtonInteraction, PermissionsBitField } from "discord.js";
 import RecordingSession from "./RecordingSession";
 
-function recordCommand(interaction: ChatInputCommandInteraction)
+async function startRecording(interaction: ButtonInteraction)
 {
 	if (!interaction.guild)
 	{
@@ -28,6 +29,11 @@ function recordCommand(interaction: ChatInputCommandInteraction)
 		return interaction.reply(QuickReplies.interactionError("You must be in a voice channel in this server."));
 	}
 
+	if (channel.id != interaction.message.channelId)
+	{
+		return interaction.reply(QuickReplies.interactionError("You must be in the same voice channel as this message."));
+	}
+
 	if (RecordingSession.Sessions.has(channel.id))
 	{
 		return interaction.reply({
@@ -47,16 +53,9 @@ function recordCommand(interaction: ChatInputCommandInteraction)
  */
 export default {
 
-	registerChatCommand: [
-		new SlashCommandBuilder()
-			.setName("record")
-			.setDescription("Record audio your current voice channel (2hr max).")
-			.addBooleanOption(option =>
-				option.setName("record-pauses")
-					.setDescription("If false, the recording will pause when nobody is speaking. Default is false.")
-					.setRequired(false)
-		),
-		recordCommand
-	]
+	registerButton: [
+		"startRecording",
+		startRecording
+	],
 
 } as BotModule;

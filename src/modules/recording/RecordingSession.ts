@@ -1,12 +1,14 @@
 import { AudioReceiveStream, createAudioPlayer, createAudioResource, joinVoiceChannel, NoSubscriberBehavior, VoiceConnection, VoiceConnectionStatus } from "@discordjs/voice";
 import prism from "prism-media";
 import fs from "fs";
-import { ButtonStyle, ChatInputCommandInteraction, ComponentType, Guild, Message, VoiceBasedChannel } from "discord.js";
+import { ButtonInteraction, ButtonStyle, ChatInputCommandInteraction, ComponentType, Guild, Message, VoiceBasedChannel } from "discord.js";
 import { Authors, Buttons } from "@/messaging";
 import Debug from "@/debug";
 import { GoogleDrive } from "@/apis/Google";
 import { Lame } from "node-lame";
 import { AutoRecordRole } from "@/database/RolesModuleSheet";
+import { BotLogChannelId, FallbackRecordingChannelId } from "@/database/ChannelsModuleSheet";
+import ClientWrapper from "@/ClientWrapper";
 
 const STARTUP_AUDIO_FILE = "public/sound/sound-effects/start-computeraif-14572.mp3";
 const TEMP_RECORDING_DIR = "public/temp/recordings/";
@@ -53,7 +55,7 @@ interface ActivityEntry
 
 class RecordingSession
 {
-	public static async CreateSession(interaction: ChatInputCommandInteraction & { guildId: string}, channel: VoiceBasedChannel)
+	public static async CreateSession(interaction: (ChatInputCommandInteraction | ButtonInteraction) & { guildId: string}, channel: VoiceBasedChannel)
 	{
 		if (RecordingSession.GuildHasSession(interaction.guildId))
 		{
@@ -65,7 +67,16 @@ class RecordingSession
 			});
 		}
 
-		const message = await interaction.reply({ content: "Starting recording session...", fetchReply: true });
+		let message: Message;
+		
+		if (interaction.isButton())
+		{
+			await interaction.deferUpdate();
+			message = interaction.message;
+		}
+		else
+			message = await interaction.reply({ content: "Starting recording session...", fetchReply: true });
+		
 
 		// @ts-ignore - The message must have a guild as the message is sent in a guild channel.
 		new RecordingSession(interaction.user.id, message, channel, !(interaction.options.getBoolean("record-pauses", false) ?? false));
@@ -86,6 +97,7 @@ class RecordingSession
 
 	public readonly creatorId: string;
 	public readonly message: Message;
+	public readonly guildId: string;
 	public readonly channel: VoiceBasedChannel;
 	public readonly connection: VoiceConnection;
 	public readonly recordingStartTime: number;
@@ -104,6 +116,7 @@ class RecordingSession
 	private constructor(userId: string, message: Message & { guild: Guild, guildId: string }, channel: VoiceBasedChannel, removePauses: boolean)
 	{
 		this.message = message;
+		this.guildId = message.guildId;
 		this.creatorId = userId;
 		this.channel = channel;
 		this.removePauses = removePauses;
@@ -165,7 +178,7 @@ class RecordingSession
 					description: atUsers.join(" ") +
 						"\nThe recording session will reach time limit in 10 minutes."
 				}]
-			});
+			}).catch(Debug.error);
 
 			this.maxTime = setTimeout(() =>
 			{
@@ -222,15 +235,13 @@ class RecordingSession
 
 		if (file)
 		{
-			await this.setClosedMessage(file.webViewLink, filename).then(() =>
+			await this.setClosedMessage(file.webViewLink, filename, reason).then(() =>
 			{
 				// delete the file from this file system
 				fs.unlink(filename, (err) => { if (err) Debug.error(err); });
 				if (converted)
 					fs.unlink(this.fileName, (err) => { if (err) Debug.error(err); });
 			}).catch(Debug.error);
-
-			
 		}
 	}
 
@@ -366,14 +377,15 @@ class RecordingSession
 
 	private updateActiveMessage()
 	{
+		const _this = this;
 		return this.message.edit({
 			content: "",
 			embeds: [{
 				author: Authors.Recording,
 				description: `Channel: <#${this.channel.id}>\n` +
 					"**Activity:**\n" +
-					`<@${this.activity[0].userId}> Started <t:${Math.floor(this.recordingStartTime / 1000)}:R>\n` +
-					this.activity.slice(1).map((entry) => `<@${entry.userId}> ${entry.join ? "joined" : "left"} <t:${Math.floor(entry.time / 1000)}:R>`).join("\n"),
+					`<t:${Math.floor(this.recordingStartTime / 1000)}:R> <@${this.activity[0].userId}> Started\n` +
+					this.activity.slice(1).map((entry) => `<t:${Math.floor(entry.time / 1000)}:R> <@${entry.userId}> ${entry.join ? "joined" : "left"}`).join("\n"),
 			}],
 			components: Buttons.toNiceActionRows([{
 				type: ComponentType.Button,
@@ -394,7 +406,10 @@ class RecordingSession
 				custom_id: "leaveRecording",
 				emoji: { name: "🔇" }
 			}])
-		})
+		}).catch(() =>
+		{
+			_this.stopRecording("Message/Channel no longer exits.");
+		});
 	}
 
 	private setUploadingMessage()
@@ -405,15 +420,15 @@ class RecordingSession
 				author: Authors.Recorded,
 				title: "Recorded Audio in " + this.channel.name,
 				description: "**Activity:**\n" +
-					`<@${this.activity[0].userId}> Started <t:${Math.floor(this.recordingStartTime / 1000)}:f>\n` +
-					this.activity.slice(1).map((entry) => `<@${entry.userId}> ${entry.join ? "joined" : "left"} <t:${Math.floor(entry.time / 1000)}:T>`).join("\n") +
+					`<t:${Math.floor(this.recordingStartTime / 1000)}:f> <@${this.activity[0].userId}> Started\n` +
+					this.activity.slice(1).map((entry) => `<t:${Math.floor(entry.time / 1000)}:T> <@${entry.userId}> ${entry.join ? "joined" : "left"}`).join("\n") +
 					`\nUploading (this can take a few seconds)...`
 			}],
 			components: []
-		});
+		}).then(() => { });
 	}
 
-	private async setClosedMessage(link: string | null | undefined, attachFile: string)
+	private async setClosedMessage(link: string | null | undefined, attachFile: string, reason: string)
 	{
 		let attach: boolean;
 
@@ -429,16 +444,16 @@ class RecordingSession
 		}
 
 		const endTime = Date.now();
-		await this.message.edit({
+		const messageContent = {
 			content: "",
 			embeds: [{
 				author: Authors.Recorded,
 				title: "Recorded Audio in " + this.channel.name,
 				description: "**Activity:**\n" +
-					`<@${this.activity[0].userId}> Started <t:${Math.floor(this.recordingStartTime / 1000)}:f>\n` +
-					this.activity.slice(1).map((entry) => `<@${entry.userId}> ${entry.join ? "joined" : "left"} <t:${Math.floor(entry.time / 1000)}:T>`).join("\n") +
-					`\nEnded <t:${Math.floor(endTime / 1000)}:T>`
-			}],
+					`<t:${Math.floor(this.recordingStartTime / 1000)}:f> <@${this.activity[0].userId}> Started\n` +
+					this.activity.slice(1).map((entry) => `<t:${Math.floor(entry.time / 1000)}:T> <@${entry.userId}> ${entry.join ? "joined" : "left"}`).join("\n") +
+					`\n<t:${Math.floor(endTime / 1000)}:T> Ended: ${reason}`
+		}],
 			components: link ? Buttons.toNiceActionRows([{
 				type: ComponentType.Button,
 				label: "View Recording",
@@ -447,7 +462,31 @@ class RecordingSession
 				emoji: { name: "📥" }
 			}]) : [],
 			files: attach ? [attachFile] : []
-		});
+		}
+		try
+		{
+			await this.message.edit(messageContent);
+		}
+		catch (e)
+		{
+			messageContent.content = "*Original recording channel no longer exists.*";
+
+			const [fallback, botLog] = await Promise.all([
+				FallbackRecordingChannelId.fetch(this.guildId).then((id) => ClientWrapper.Client.channels.fetch(id)).then(c => c?.isTextBased() ? c : null).catch(() => null),
+				BotLogChannelId.fetch(this.guildId).then((id) => ClientWrapper.Client.channels.fetch(id)).then(c => c?.isTextBased() ? c : null).catch(() => null)
+			]);
+
+			if (fallback)
+			{
+				messageContent.content = "*Original recording channel no longer exists.*";
+				await fallback.send(messageContent);
+			}
+			else if (botLog)
+			{
+				messageContent.content = "The original recording channel no longer exists, and there is no fallback channel set to share the recording in.";
+				await botLog.send(messageContent);
+			}
+		}
 	}
 
 	private async startRecordingSound()
