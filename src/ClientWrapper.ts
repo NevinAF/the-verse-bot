@@ -157,7 +157,7 @@ class ClientWrapper
 	private onReady(callback: Delegate<[Client]>) { ClientWrapper.Instance.onReadyCallbacks.push(callback) }
 	private _onReady(client: Client)
 	{
-		setInterval(ClientWrapper.Instance.backup, 1000 * 60 * 60 * 24);
+		setInterval(ClientWrapper.Instance.backup, 1000 * 60 * 60);
 		ClientWrapper.Instance.onReadyCallbacks.forEach(callback => Resolvers.safelyInvokeDelegate(callback, client));
 	}
 
@@ -346,12 +346,12 @@ class ClientWrapper
 	{
 		Debug.log("Backing up..." + ClientWrapper.Instance.moduleSheets?.map(sheet => sheet.sheetName).join(", "));
 
-		return Promise.all([
-			Promise.all(ClientWrapper.Instance.backupCallbacks.map(callback => Resolvers.safelyInvokeDelegate(callback, crashed)))
-				.then(() => Debug.event("Backup", "Backup complete.")),
-			Promise.all(ClientWrapper.Instance.moduleSheets?.map(sheet => sheet.pushAll().catch(e => Debug.error("Error pushing module sheet: " + sheet.sheetName, e))) ?? [])
-				.then(() => Debug.event("Backup", "Module sheets pushed."))
-		]);
+		return Promise.all(ClientWrapper.Instance.backupCallbacks.map(callback => Resolvers.safelyInvokeDelegate(callback, crashed))).then(() =>
+		{
+			Debug.event("Backup", "Backup complete.");
+			return Promise.all(ClientWrapper.Instance.moduleSheets?.map(sheet => sheet.pushAll().catch(e => Debug.error("Error pushing module sheet: " + sheet.sheetName, e))) ?? [])
+		})
+		.then(() => Debug.event("Backup", "Module sheets pushed."));
 	}
 	public backup()
 	{

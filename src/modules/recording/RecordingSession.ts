@@ -9,6 +9,8 @@ import { Lame } from "node-lame";
 import { AutoRecordRole } from "@/database/RolesModuleSheet";
 import { BotLogChannelId, FallbackRecordingChannelId } from "@/database/ChannelsModuleSheet";
 import ClientWrapper from "@/ClientWrapper";
+import { EventChecker } from "@/stats";
+import { RegexpLib } from "@/util/RegexpLib";
 
 const STARTUP_AUDIO_FILE = "public/sound/sound-effects/start-computeraif-14572.mp3";
 const TEMP_RECORDING_DIR = "public/temp/recordings/";
@@ -68,6 +70,7 @@ class RecordingSession
 		}
 
 		let message: Message;
+		let omitPauses = true;
 		
 		if (interaction.isButton())
 		{
@@ -75,11 +78,14 @@ class RecordingSession
 			message = interaction.message;
 		}
 		else
+		{
 			message = await interaction.reply({ content: "Starting recording session...", fetchReply: true });
+			omitPauses = !(interaction.options.getBoolean("record-pauses", false) ?? false);
+		}
 		
 
 		// @ts-ignore - The message must have a guild as the message is sent in a guild channel.
-		new RecordingSession(interaction.user.id, message, channel, !(interaction.options.getBoolean("record-pauses", false) ?? false));
+		new RecordingSession(interaction.user.id, message, channel, omitPauses);
 	}
 
 	public static GuildHasSession(guildId: string)
@@ -101,7 +107,8 @@ class RecordingSession
 	public readonly channel: VoiceBasedChannel;
 	public readonly connection: VoiceConnection;
 	public readonly recordingStartTime: number;
-	public readonly fileName: string;
+	public readonly fileNameNoPath: string;
+	public get filePath() { return TEMP_RECORDING_DIR + this.fileNameNoPath; }
 	private readonly removePauses: boolean;
 
 	private recordingBuffer: AudioChunk[];
@@ -138,8 +145,9 @@ class RecordingSession
 		this.activity = [];
 		this.disconnectedUsers = [];
 
-		this.fileName = `${TEMP_RECORDING_DIR}${channel.name} ${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()} ${date.getHours()}-${date.getMinutes()}-${date.getSeconds()}.wav`;
-		this.fileStream = fs.createWriteStream(this.fileName, { start: 44 });
+		let nameWithoutEmojis = channel.name.replace(/[^a-zA-Z0-9 ]/g, "");
+		this.fileNameNoPath = `${nameWithoutEmojis} ${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()} ${date.getHours()}-${date.getMinutes()}-${date.getSeconds()}.wav`;
+		this.fileStream = fs.createWriteStream(this.filePath, { start: 44 });
 
 		this.connection.on(VoiceConnectionStatus.Ready, async () =>
 		{
@@ -203,7 +211,10 @@ class RecordingSession
 			this.removeUser(this.users.keys().next().value);
 		}
 
-		this.connection.destroy();
+		if (this.connection.state.status !== VoiceConnectionStatus.Destroyed)
+		{
+			this.connection.destroy();
+		}
 
 		const hasAudio = this.flushAudio();
 		this.fileStream.end();
@@ -213,18 +224,19 @@ class RecordingSession
 			return await this.message.edit({embeds: [], content: "No audio was recorded (no users joined or all users were muted)."}).catch(Debug.error);
 		}
 
-		this.writeWaveHeader(this.fileName);
+		this.writeWaveHeader(this.filePath);
 
 		RecordingSession.Sessions.delete(this.channel.id);
 
 		const converted = await this.convertToWav().then(() => true).catch(() => false);
-		const filename = converted ? this.fileName.replace(".wav", ".mp3") : this.fileName;
+		const filename = converted ? this.fileNameNoPath.replace(".wav", ".mp3") : this.fileNameNoPath;
+		const filePath = TEMP_RECORDING_DIR + filename;
 		const filetype = converted ? "mp3" : "wav";
 
 		const file = await GoogleDrive.CreateFile({
 			media: {
 				mimeType: "audio/" + filetype,
-				body: fs.createReadStream(filename),
+				body: fs.createReadStream(filePath),
 			},
 			fields: "id, name, webViewLink",
 			requestBody: {
@@ -235,12 +247,12 @@ class RecordingSession
 
 		if (file)
 		{
-			await this.setClosedMessage(file.webViewLink, filename, reason).then(() =>
+			await this.setClosedMessage(file.webViewLink, filePath, reason).then(() =>
 			{
 				// delete the file from this file system
-				fs.unlink(filename, (err) => { if (err) Debug.error(err); });
+				fs.unlink(filePath, (err) => { if (err) Debug.error(err); });
 				if (converted)
-					fs.unlink(this.fileName, (err) => { if (err) Debug.error(err); });
+					fs.unlink(this.filePath, (err) => { if (err) Debug.error(err); });
 			}).catch(Debug.error);
 		}
 	}
@@ -385,7 +397,7 @@ class RecordingSession
 				description: `Channel: <#${this.channel.id}>\n` +
 					"**Activity:**\n" +
 					`<t:${Math.floor(this.recordingStartTime / 1000)}:R> <@${this.activity[0].userId}> Started\n` +
-					this.activity.slice(1).map((entry) => `<t:${Math.floor(entry.time / 1000)}:R> <@${entry.userId}> ${entry.join ? "joined" : "left"}`).join("\n"),
+					this.getActivityString(true),
 			}],
 			components: Buttons.toNiceActionRows([{
 				type: ComponentType.Button,
@@ -421,11 +433,24 @@ class RecordingSession
 				title: "Recorded Audio in " + this.channel.name,
 				description: "**Activity:**\n" +
 					`<t:${Math.floor(this.recordingStartTime / 1000)}:f> <@${this.activity[0].userId}> Started\n` +
-					this.activity.slice(1).map((entry) => `<t:${Math.floor(entry.time / 1000)}:T> <@${entry.userId}> ${entry.join ? "joined" : "left"}`).join("\n") +
+					this.getActivityString(false) +
 					`\nUploading (this can take a few seconds)...`
 			}],
 			components: []
 		}).then(() => { });
+	}
+
+	private getActivityString(relativeFormat: boolean): string
+	{
+		let startIndex = this.activity.length - 20;
+
+		if (startIndex < 1)
+		{
+			startIndex = 1;
+		}
+
+		let last_twenties = this.activity.slice(startIndex);
+		return last_twenties.map((entry) => `<t:${Math.floor(entry.time / 1000)}:${relativeFormat ? "R" : "T"}> <@${entry.userId}> ${entry.join ? "joined" : "left"}`).join("\n")
 	}
 
 	private async setClosedMessage(link: string | null | undefined, attachFile: string, reason: string)
@@ -451,7 +476,7 @@ class RecordingSession
 				title: "Recorded Audio in " + this.channel.name,
 				description: "**Activity:**\n" +
 					`<t:${Math.floor(this.recordingStartTime / 1000)}:f> <@${this.activity[0].userId}> Started\n` +
-					this.activity.slice(1).map((entry) => `<t:${Math.floor(entry.time / 1000)}:T> <@${entry.userId}> ${entry.join ? "joined" : "left"}`).join("\n") +
+					this.getActivityString(false) +
 					`\n<t:${Math.floor(endTime / 1000)}:T> Ended: ${reason}`
 		}],
 			components: link ? Buttons.toNiceActionRows([{
@@ -463,27 +488,44 @@ class RecordingSession
 			}]) : [],
 			files: attach ? [attachFile] : []
 		}
-		try
+
+		let isEvent = this.channel && EventChecker.channelIsEvent(this.channel.guild, this.channel.id);
+		let updateMessage = !isEvent;
+
+		if (updateMessage)
 		{
-			await this.message.edit(messageContent);
+			try
+			{
+				await this.message.edit(messageContent);
+			}
+			catch (e)
+			{
+				updateMessage = false;
+			}
 		}
-		catch (e)
+		else
 		{
-			messageContent.content = "*Original recording channel no longer exists.*";
+			await this.message.edit({ content: "Recording ended and uploaded.", embeds: [], components: [] });
+		}
+
+		if (!updateMessage)
+		{
+			messageContent.content = isEvent ?
+				"*Original recording was in an event channel.*" :
+				"*Original recording was channel no longer exists.*";
 
 			const [fallback, botLog] = await Promise.all([
-				FallbackRecordingChannelId.fetch(this.guildId).then((id) => ClientWrapper.Client.channels.fetch(id)).then(c => c?.isTextBased() ? c : null).catch(() => null),
-				BotLogChannelId.fetch(this.guildId).then((id) => ClientWrapper.Client.channels.fetch(id)).then(c => c?.isTextBased() ? c : null).catch(() => null)
+				FallbackRecordingChannelId.fetch(this.guildId).then((id) => ClientWrapper.Client.channels.fetch(id)).then(c => c?.isTextBased?.() ? c : null).catch(() => null),
+				BotLogChannelId.fetch(this.guildId).then((id) => ClientWrapper.Client.channels.fetch(id)).then(c => c?.isTextBased?.() ? c : null).catch(() => null)
 			]);
 
 			if (fallback)
 			{
-				messageContent.content = "*Original recording channel no longer exists.*";
 				await fallback.send(messageContent);
 			}
 			else if (botLog)
 			{
-				messageContent.content = "The original recording channel no longer exists, and there is no fallback channel set to share the recording in.";
+				messageContent.content += " AND there is no fallback channel set to share the recording in.";
 				await botLog.send(messageContent);
 			}
 		}
@@ -522,7 +564,7 @@ class RecordingSession
 
 		if (number_entries === -1) number_entries = this.recordingBuffer.length;
 
-		if (this.wavTime === null || this.wavBuffer_one === null || this.wavBuffer_two === null || this.nextEmptyBufferIndex === null)
+		if (!this.wavTime || !this.wavBuffer_one || !this.wavBuffer_two || !this.nextEmptyBufferIndex)
 		{
 			this.wavTime = this.recordingBuffer[0].timestamp;
 			this.wavBuffer_one = Buffer.alloc(WRITE_BUFFER_SIZE);
@@ -538,7 +580,7 @@ class RecordingSession
 
 			if (!entry || !this.wavTime)
 			{
-				Debug.error("Recording buffer is empty, but we tried to write to it!");
+				Debug.error("Recording buffer is empty, but we tried to write to it! Time: " + this.wavTime);
 				return;
 			}
 
@@ -615,7 +657,7 @@ class RecordingSession
 			this.writeAudio();
 		}
 
-		if (this.wavBuffer_one === null || this.wavBuffer_two === null) return false;
+		if (!this.wavBuffer_one || !this.wavBuffer_two) return false;
 
 		
 		if (this.nextEmptyBufferIndex && this.nextEmptyBufferIndex <= WRITE_BUFFER_SIZE)
@@ -652,6 +694,8 @@ class RecordingSession
 			Debug.error("File size is smaller than the header size!");
 			return;
 		}
+
+		Debug.log("Writing wave header to file: " + filename + " (file size: " + fileSize + " bytes)");
 
 		// RIFF header
 		header.write("RIFF", 0);
@@ -696,7 +740,7 @@ class RecordingSession
 
 	private convertToWav()
 	{
-		const wav_fileName = this.fileName;
+		const wav_fileName = this.filePath;
 		const mp3_fileName = wav_fileName.replace(".wav", ".mp3");
 
 		const encoder = new Lame({

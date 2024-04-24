@@ -53,6 +53,8 @@ export class EventChecker
 			return;
 		}
 
+
+
 		const currentTime = Date.now();
 		let nextUpdateTime: number = currentTime + 1000 * 60 * 60 * 24; // 24 hours
 		
@@ -63,12 +65,34 @@ export class EventChecker
 
 			if (eventData)
 			{
-				if (event.scheduledEndTimestamp && (event.status === GuildScheduledEventStatus.Active || event.scheduledEndTimestamp > currentTime))
+				let endingTime: number | null
+
+				if (event.scheduledEndTimestamp)
 				{
-					if (event.scheduledEndTimestamp < nextUpdateTime)
+					endingTime = event.scheduledEndTimestamp;
+				}
+				else if (event.scheduledStartTimestamp)
+				{
+					endingTime = event.scheduledStartTimestamp + 1000 * 60 * 60; // 1 hour
+				}
+				else
+				{
+					Debug.warning(`Event ${event.name} has no start or end time and therefore cannot be updated nor should exist.`);
+					endingTime = null;
+				}
+
+				if (event.status === GuildScheduledEventStatus.Active || (endingTime && endingTime > currentTime))
+				{
+					if (!endingTime)
 					{
-						nextUpdateTime = event.scheduledEndTimestamp;
+						endingTime = currentTime + 1000 * 60 * 60; // 1 hour
 					}
+
+					if (endingTime < nextUpdateTime)
+					{
+						nextUpdateTime = endingTime;
+					}
+					Debug.log(`Event ${event.name} is ongoing (${event.status}) and will check (probably end) at ${new Date(endingTime).toLocaleString()} for change in status.`);
 					continue;
 				}
 
@@ -101,10 +125,27 @@ export class EventChecker
 
 			const createTime = event.scheduledStartTimestamp - EventChecker.createBefore;
 			const loc = event.entityMetadata?.location?.trim();
-			if (!loc || !loc.toLowerCase().startsWith("vc:"))
+			let channelName: string | null = null;
+			if (loc && loc.toLowerCase().startsWith("vc:"))
+				channelName = loc.substring(3);
+			else if (loc && loc.toLowerCase().startsWith("discord:"))
+				channelName = loc.substring(8);
+			else if (event.channelId)
+			{
+				const channel = await this.guild.channels.fetch(event.channelId, { force: true });
+				if (channel && channel.type === ChannelType.GuildVoice && channel.parentId === createCategory.id)
+				{
+					channelName = channel.name;
+				}
+			}
+			
+			if (!channelName)
+			{
+				Debug.log(`Event ${event.name} does not have a voice channel and should not be used as a bot managed event.`)
 				continue;
+			}
 
-			const channelName = loc.substring(3).trim();
+			channelName = channelName.trim();
 
 			if (currentTime < createTime)
 			{
@@ -132,6 +173,7 @@ export class EventChecker
 					}
 				}));
 
+				Debug.log(`Event ${event.name} is not yet active, will check at ${new Date(createTime).toLocaleString()} for creation.`);
 				continue;
 			}
 

@@ -43,7 +43,7 @@ export default {
 		return incPresence(duration, oldPresence.status, oldPresence.guild.id, oldPresence.member.id);
 	}],
 
-	onExiting: [async () =>
+	registerBackup: [async () =>
 	{
 		const crashTime = Date.now();
 		const readyTime = ClientWrapper.Client.readyTimestamp;
@@ -72,7 +72,7 @@ export default {
 						member.guild.id,
 						{ compareValue: member.id, column: UserEntryData.UserID },
 						UserEntryData.CurrentMember,
-						member.roles.cache.has(internalRole) ? "Yes" : "No"
+						member.roles.cache.has(internalRole) ? "true" : "false"
 					),
 				]);
 			}
@@ -81,7 +81,7 @@ export default {
 			{
 				if (!members.some(m => m.id === userId))
 				{
-					await UserData.writeCellData(guild.id, { compareValue: userId, column: UserEntryData.UserID }, UserEntryData.CurrentMember, "No");
+					await UserData.writeCellData(guild.id, { compareValue: userId, column: UserEntryData.UserID }, UserEntryData.CurrentMember, "false");
 				}
 			}
 		}

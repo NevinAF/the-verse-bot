@@ -1,5 +1,7 @@
 import { BotModule } from "@/types";
 import { UserData, UserEntryData } from "@/database/UserDataModuleSheet";
+import { MessageType } from "discord.js";
+import { RegexpLib } from "@/util/RegexpLib";
 
 export default {
 
@@ -32,7 +34,57 @@ export default {
 	onMessageCreate: [(m) =>
 	{
 		if (m.guildId && m.member)
-			UserData.incrementCell(m.guildId, { column: UserEntryData.UserID, compareValue: m.member.id }, UserEntryData.MessagesCreated)
+		{
+			const promises: Promise<any>[] = [];
+			promises.push(
+				UserData.incrementCell(m.guildId, { column: UserEntryData.UserID, compareValue: m.member.id }, UserEntryData.MessagesCreated)
+			);
+			if (m.mentions.members?.size)
+			{
+				promises.push(
+					UserData.incrementCell(m.guildId, { column: UserEntryData.UserID, compareValue: m.member.id }, UserEntryData.MemberMentions, m.mentions.members.size)
+				);
+			}
+
+			if (m.mentions.roles?.size)
+			{
+				promises.push(
+					UserData.incrementCell(m.guildId, { column: UserEntryData.UserID, compareValue: m.member.id }, UserEntryData.RoleMentions, m.mentions.roles.size)
+				);
+			}
+
+			if (m.mentions.channels?.size)
+			{
+				promises.push(
+					UserData.incrementCell(m.guildId, { column: UserEntryData.UserID, compareValue: m.member.id }, UserEntryData.ChannelMentions, m.mentions.channels.size)
+				);
+			}
+
+			if (m.mentions.everyone)
+			{
+				promises.push(
+					UserData.incrementCell(m.guildId, { column: UserEntryData.UserID, compareValue: m.member.id }, UserEntryData.EveryoneMentions)
+				);
+			}
+
+			if (m.type == MessageType.Reply)
+			{
+				promises.push(
+					UserData.incrementCell(m.guildId, { column: UserEntryData.UserID, compareValue: m.member.id }, UserEntryData.MessageReplies)
+				);
+			}
+
+			// Find all emojis in the message
+			const emojis = m.content.match(RegexpLib.emojiRegex);
+			if (emojis)
+			{
+				promises.push(
+					UserData.incrementCell(m.guildId, { column: UserEntryData.UserID, compareValue: m.member.id }, UserEntryData.MessageEmojis, emojis.length)
+				);
+			}
+
+			return Promise.all(promises);
+		}
 	}],
 
 } as BotModule

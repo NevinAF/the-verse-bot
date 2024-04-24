@@ -25,9 +25,19 @@ export enum UserEntryData
 	LastToLeaveVC,
 
 	MessagesCreated,
+	MessageReplies,
+	MemberMentions,
+	RoleMentions,
+	ChannelMentions,
+	EveryoneMentions,
+	MessageEmojis,
+
 	MessagesEdited,
 	MessagesDeleted,
-	MessagesReactionsAdded,
+
+	MessageReactionsAdded,
+	// MessageReactionsAddedOverOne,
+	MessageReactionsRemoved,
 	MessageReactionsGotten,
 	FastMessageReactions,
 

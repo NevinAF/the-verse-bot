@@ -1,0 +1,27 @@
+- Most Tasks/Task updates
++ First Responder -> Fastest replies (to @s)
++ Watcher -> Smallest messages / Online time ratio
++ Notifier -> Most @'s used
++ Shouter -> Most people (total) notified from all @s
++ Replier -> Most reply messages
++ Piggy Backer -> More replies than normal messages
++ Uploader -> Most attachments/links posted
++ Netizen -> Longest online
++ Commander -> Most commands used
++ Button Pusher -> Most buttons used
++ Always Live -> longest time in VC
++ Hopper -> Most times switching VC
++ Editor -> Edit the most messages
++ Nevermind -> Delete the most messages
+- Indecisive -> Change roles the most? Or Most times switching VC?
++ The Ender -> Send the last message in a conversation chain.
++ Me and Myself -> Longest message chain without any other person interrupting.
++ Is it Just me? -> Longest message to not have a following message nor a reaction.
++ Not a DM (two people) -> Longest chain in a public channel without a third person sending a message.
++ Popular -> Most reactions
++ Conversation Starter -> Have the most messages posted within a short time after a message is posted
+? Organizer -> Most threads created
++ Attender -> Attend the most events / Spend the most time in a Event VCs during events
++ Idler -> Most time idle
++ Ghost -> Most messages sent while not online OR most messages send per time online.
++ But How? -> Delete more messages than you have sent this week.

@@ -34,7 +34,7 @@ async function ListRoleMembers(interaction: ChatInputCommandInteraction<CacheTyp
 	await interaction.guild.members.fetch();
 
 	const members = interaction.guild.members.cache.filter(m => m.roles.cache.has(role.id));
-	members.forEach(u => content += `<@${u}>, `);
+	members.forEach(u => content += `<@${u.id}>, `);
 
 	if (content == "") content = "No members were found.";
 	else content = content.substring(0, content.length - 2);

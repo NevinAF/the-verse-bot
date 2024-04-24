@@ -17,7 +17,7 @@ namespace Deezer
 			url: track.link,
 			description: [
 				["Album", `[${track.album.title}](https://deezer.com/album/${track.album.id})`],
-				["Duration", `${Previewing.msToHuman(track.duration * 1000, false)}`],
+				["Duration", `${Previewing.msToHuman(track.duration * 1000)}`],
 				["Explicit", `${track.explicit_lyrics ? "Yes" : "No"}`],
 				//["User Ranking", `${track.rank}`],
 			].map(([key, value]) => `**${key}**: ${value}`).join('\n'),

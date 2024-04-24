@@ -30,10 +30,12 @@ import core from "@/modules/core";
 import polls from "@/modules/polls";
 import events from "@/modules/events";
 import presence from "@/modules/presence";
-import statistics from "./modules/statistics";
-import shoutouts from "./modules/shoutouts";
-import recording from "./modules/recording";
-import roleAssign from "./modules/role-assign";
+import statistics from "@/modules/statistics";
+import shoutouts from "@/modules/shoutouts";
+import recording from "@/modules/recording";
+import roleAssign from "@/modules/role-assign";
+import versebotResponses from "@/modules/versebot-responses";
+import serverUpdates from "./modules/server-updates";
 
 Debug.log("Registering modules...");
 for (const module of [
@@ -45,7 +47,9 @@ for (const module of [
 	...statistics,
 	...shoutouts,
 	...recording,
-	...roleAssign
+	...roleAssign,
+	...versebotResponses,
+	...serverUpdates,
 ]) {
 	ClientWrapper.Instance.registerModule(module);
 }

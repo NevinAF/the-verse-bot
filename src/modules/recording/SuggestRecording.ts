@@ -1,3 +1,4 @@
+import { UserData, UserEntryData } from "@/database/UserDataModuleSheet";
 import { Authors, Buttons } from "@/messaging";
 import { BigVoiceChannels, EventChecker } from "@/stats";
 import { BotModule } from "@/types";
@@ -48,9 +49,14 @@ export default {
 			const channel = await oldState.guild.channels.fetch(oldState.channelId);
 			if (channel && (channel.type == ChannelType.GuildVoice))
 			{
-				if (channel.members.size < 2)
+				if (channel.members.size == 0)
 				{
 					BigVoiceChannels.Remove(channel.id);
+
+					if (oldState.member)
+					{
+						await UserData.incrementCell(oldState.guild.id, { column: UserEntryData.UserID, compareValue: oldState.member.id }, UserEntryData.LastToLeaveVC);
+					}
 				}
 			}
 		}

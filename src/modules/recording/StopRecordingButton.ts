@@ -47,7 +47,7 @@ async function stopRecording(interaction: ButtonInteraction)
 
 	await interaction.deferUpdate();
 
-	session.stopRecording(`User ${interaction.id} ended the recording`).catch(Debug.error);
+	session.stopRecording(`by <@${interaction.user.id}>`).catch(Debug.error);
 }
 
 /**

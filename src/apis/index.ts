@@ -1,6 +1,8 @@
 import { GoogleClient } from "./Google";
 
 export * from "./Google";
+export * from "./Dezzer";
+export * from "./OpenAI";
 
 export default function initialized()
 {

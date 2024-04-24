@@ -423,7 +423,7 @@ export class WritableColumnedMatrixSheet extends WritableModuleSheetEntry<"Strin
 
 	public getColumnNumberData(guildId: string, column: number): Promise<readonly number[]>
 	{
-		return this.getColumnStringData(guildId, column).then((data) => data.map((cell) => cell == "" ? 0 : Number(cell)));
+		return this.getColumnStringData(guildId, column).then((data) => data.map((cell) => (!cell || Number.isNaN(cell) || cell == "") ? 0 : Number(cell)));
 	}
 
 	public getCellNumberData(guildId: string, rowSearch: RowSearch, column: number): Promise<number>
@@ -433,12 +433,12 @@ export class WritableColumnedMatrixSheet extends WritableModuleSheetEntry<"Strin
 
 	public getColumnBooleanData(guildId: string, column: number): Promise<readonly boolean[]>
 	{
-		return this.getColumnStringData(guildId, column).then((data) => data.map((cell) => cell == "true"));
+		return this.getColumnStringData(guildId, column).then((data) => data.map((cell) => cell.toLowerCase() == "true"));
 	}
 
 	public getCellBooleanData(guildId: string, rowSearch: RowSearch, column: number): Promise<boolean | undefined>
 	{
-		return this.getCellStringData(guildId, rowSearch, column).then((data) => data ? data == "true" : undefined);
+		return this.getCellStringData(guildId, rowSearch, column).then((data) => data ? data.toLowerCase() == "true" : undefined);
 	}
 
 	public writeCellData(guildId: string, rowSearch: RowSearch, entry: number, data: string | number | boolean): Promise<void>

@@ -17,5 +17,6 @@ export default [
 	BackgroundJamChatCommand,
 	RecordingVoiceChannelStateCallbacks,
 	SuggestRecording,
+	StartRecordingButton
 
 ] as BotModule[];

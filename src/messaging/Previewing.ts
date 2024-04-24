@@ -39,8 +39,15 @@ namespace Previewing
 		return options;
 	}
 
-	export function msToHuman(milli_secs: number, includeMs: boolean = false): string
+	export function msToHuman(milli_secs: number, units?: { ms?: boolean, sec?: boolean, min?: boolean, hr?: boolean }): string
 	{
+		if (milli_secs <= 0) return "0sec";
+
+		const use_ms = units?.ms ?? false;
+		const use_sec = units?.sec ?? true;
+		const use_min = units?.min ?? true;
+		const use_hr = units?.hr ?? true;
+
 		var ms = milli_secs % 1000;
 		milli_secs = (milli_secs - ms) / 1000;
 		var secs = milli_secs % 60;
@@ -52,10 +59,10 @@ namespace Previewing
 	
 		let result = "";
 		if (days > 0) result += days + "d ";
-		if (hrs > 0) result += hrs + "hr ";
-		if (mins > 0) result += mins + "min "
-		if (secs > 0 || !includeMs) result += secs + "sec ";
-		if (includeMs) result += ms + "ms ";
+		if (hrs > 0 && use_hr) result += hrs + "hr ";
+		if (mins > 0 && use_min) result += mins + "min "
+		if (secs > 0 && use_sec) result += secs + "sec ";
+		if (use_ms) result += ms + "ms ";
 		return result.substring(0, result.length - 1);
 	}
 
